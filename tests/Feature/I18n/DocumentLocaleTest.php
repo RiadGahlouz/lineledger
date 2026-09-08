@@ -4,7 +4,9 @@ use App\Enums\AccountSubtype;
 use App\Enums\CompanyRole;
 use App\Models\Account;
 use App\Models\Company;
+use App\Models\CompanyInvitation;
 use App\Models\Contact;
+use App\Models\Estimate;
 use App\Models\Invoice;
 use App\Models\User;
 use App\Notifications\Sales\InvoiceSharedNotification;
@@ -146,4 +148,56 @@ it('applies ?lang= for guests and shows the language switcher', function () {
         ->assertOk()
         ->assertSee('data-test="language-switcher"', false)
         ->assertSee('Français');
+});
+
+it('renders estimate chrome in the customer document language', function () {
+    $customer = Contact::create([
+        'display_name' => 'Acme',
+        'is_customer' => true,
+        'locale' => 'fr',
+    ]);
+
+    $estimate = Estimate::create([
+        'contact_id' => $customer->id,
+        'estimate_no' => 'EST-I18N-1',
+        'estimate_date' => CarbonImmutable::create(2026, 9, 7),
+        'expires_on' => CarbonImmutable::create(2026, 10, 7),
+    ]);
+    $estimate->lines()->create([
+        'account_id' => $this->income->id,
+        'description' => 'Consulting',
+        'quantity' => '1',
+        'unit_price_cents' => 10000,
+        'line_subtotal_cents' => 10000,
+        'line_tax_cents' => 0,
+        'line_total_cents' => 10000,
+        'line_order' => 0,
+    ]);
+    $estimate->load('contact', 'lines.taxCode', 'lines.item', 'terms', 'salesRep');
+
+    $html = Locales::forContactDocument($customer, $this->company, fn (): string => view('pdf.estimates.estimate', [
+        'company' => $this->company,
+        'estimate' => $estimate,
+        'settings' => $this->company->invoiceSettingsOrNew(),
+        'taxSummary' => [],
+    ])->render());
+
+    expect($html)->toContain('SOUMISSION')
+        ->and($html)->not->toContain('>ESTIMATE<');
+});
+
+it('writes a company invitation in the invitee locale', function () {
+    $invitee = User::factory()->create(['locale' => 'fr']);
+    $invitation = CompanyInvitation::create([
+        'company_id' => $this->company->id,
+        'email' => $invitee->email,
+        'role' => CompanyRole::Admin->value,
+        'invited_by' => $this->user->id,
+    ]);
+    $invitation->setRelation('company', $this->company);
+    $invitation->setRelation('inviter', $this->user);
+
+    $mail = (new App\Notifications\Companies\CompanyInvitation($invitation))->toMail($invitee);
+
+    expect($mail->subject)->toContain('invité');
 });

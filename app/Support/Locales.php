@@ -103,6 +103,41 @@ final class Locales
     }
 
     /**
+     * Render a customer/vendor document in that contact's document language.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $callback
+     * @return T
+     */
+    public static function forContactDocument(?Contact $contact, ?Company $company, Closure $callback): mixed
+    {
+        return self::using(self::forDocument($contact, $company), $callback);
+    }
+
+    /**
+     * Render staff mail in the recipient's UI language when they have one.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $callback
+     * @return T
+     */
+    public static function forRecipient(mixed $notifiable, Closure $callback, ?Company $company = null): mixed
+    {
+        $locale = null;
+        if (is_object($notifiable) && isset($notifiable->locale) && self::isSupported((string) $notifiable->locale)) {
+            $locale = (string) $notifiable->locale;
+        } elseif ($notifiable instanceof Contact) {
+            $locale = self::forDocument($notifiable, $company);
+        } elseif ($company !== null) {
+            $locale = self::forDocument(null, $company);
+        }
+
+        return self::using(self::canonicalize($locale), $callback);
+    }
+
+    /**
      * Run $callback with $locale active, then restore the previous locale.
      *
      * @template T
