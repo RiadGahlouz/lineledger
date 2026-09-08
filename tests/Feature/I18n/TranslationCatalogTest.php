@@ -1,6 +1,11 @@
 <?php
 
+use App\Support\Translation\ChartCopy;
 use App\Support\Translation\KeyExtractor;
+
+it('registers starter chart names for translation', function () {
+    expect(ChartCopy::names())->not->toBeEmpty();
+});
 
 it('has a French catalog entry for every static translation key', function () {
     $catalogPath = lang_path('fr.json');

@@ -33,3 +33,8 @@ it('extracts Livewire Title attribute strings as referenced keys', function () {
 it('does not treat effectiveTitle as a Title attribute', function () {
     expect(KeyExtractor::titleKeysIn('public function effectiveTitle(string $default): string'))->toBe([]);
 });
+
+it('extracts trans_choice keys', function () {
+    expect(KeyExtractor::keysIn("trans_choice(':count open invoice|:count open invoices', \$n)"))
+        ->toBe([':count open invoice|:count open invoices']);
+});

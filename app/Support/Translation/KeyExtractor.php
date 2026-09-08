@@ -39,7 +39,7 @@ final class KeyExtractor
      */
     public static function keysIn(string $contents): array
     {
-        preg_match_all('/__\(\s*([\'"])((?:\\\\.|(?!\1).)*?)\1/s', $contents, $matches);
+        preg_match_all('/(?:__|trans_choice)\(\s*([\'"])((?:\\\\.|(?!\1).)*?)\1/s', $contents, $matches);
 
         $keys = [];
         foreach ($matches[2] as $raw) {
@@ -121,7 +121,7 @@ final class KeyExtractor
             '—', '–', '-', '•', '·', '%', '$', '#', '/', ':', 'h', 'hr', 'mo', 'no',
             'AI', 'API', 'CSV', 'PDF', 'XML', 'JSON', 'HTML', 'HTTP', 'HTTPS', 'URL',
             'SKU', 'ID', 'IP', 'CC', 'PO', 'GL', 'AR', 'AP', 'FX', 'OCR', 'MCP', 'CPA',
-            'GST', 'HST', 'QST', 'PST', 'TPS', 'TVH', 'TVQ',
+            'GST', 'HST', 'PST', 'RST', 'TPS', 'TVH', 'TVQ',
             'CPP', 'CPP2', 'EI', 'QPP', 'QPP2', 'QPIP', 'T4', 'T4A', 'RL-1', 'PD7A',
             'ROE', 'T4127', 'T3010', 'GIFI', 'SIN', 'BN', 'CRA', 'RQ', 'WCB', 'CNESST',
             'QHSF', 'WSDRF', 'CCA', 'UCC', 'FIFO', 'ASNPO', '1099',
