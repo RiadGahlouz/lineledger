@@ -11,6 +11,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceSetting;
 use App\Services\Sales\PaymentRequestScheduleStatus;
 use App\Support\Money;
+use App\Support\Tax\LineTaxBreakdown;
 use App\Services\AttachmentService;
 use App\Services\Posting\InvoicePoster;
 use App\Services\Posting\InvoiceReconciler;
@@ -507,11 +508,11 @@ new #[Title('Invoice')] class extends Component {
                     <td class="px-4 py-2 text-right font-mono">{{ number_format($invoice->subtotal_cents / 100, 2) }}</td>
                 </tr>
                 @php
-                    $taxRows = \App\Support\Tax\LineTaxBreakdown::forLines($invoice->lines);
+                    $taxRows = LineTaxBreakdown::forLines($invoice->lines);
                 @endphp
                 @forelse ($taxRows as $taxRow)
                     <tr data-test="invoice-tax-row">
-                        <td colspan="{{ $this->lineLeadingColspan }}" class="px-4 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ number_format($taxRow['rate'], 2) }}%</td>
+                        <td colspan="{{ $this->lineLeadingColspan }}" class="px-4 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ LineTaxBreakdown::formatRate($taxRow['rate']) }}%</td>
                         <td class="px-4 py-2 text-right font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</td>
                     </tr>
                 @empty

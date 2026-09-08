@@ -10,6 +10,7 @@ use App\Models\Company;
 use App\Services\AttachmentService;
 use App\Services\Posting\BillPoster;
 use App\Services\Posting\BillReconciler;
+use App\Support\Tax\LineTaxBreakdown;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
@@ -240,11 +241,11 @@ new #[Title('Bill')] class extends Component {
                     <td class="px-4 py-2 text-right font-mono">{{ number_format($bill->subtotal_cents / 100, 2) }}</td>
                 </tr>
                 @php
-                    $taxRows = \App\Support\Tax\LineTaxBreakdown::forLines($bill->lines);
+                    $taxRows = LineTaxBreakdown::forLines($bill->lines);
                 @endphp
                 @forelse ($taxRows as $taxRow)
                     <tr data-test="bill-tax-row">
-                        <td colspan="7" class="px-4 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ number_format($taxRow['rate'], 2) }}%</td>
+                        <td colspan="7" class="px-4 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ LineTaxBreakdown::formatRate($taxRow['rate']) }}%</td>
                         <td class="px-4 py-2 text-right font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</td>
                     </tr>
                 @empty

@@ -2,6 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
+    @php use App\Support\Tax\LineTaxBreakdown; @endphp
     <title>{{ __('Invoice') }} {{ $invoice->invoice_no }} — {{ $company->name }}</title>
     <style>
         @page { margin: 36px 40px; }
@@ -217,7 +218,7 @@
         </tr>
         @foreach ($taxSummary as $tax)
             <tr>
-                <td>{{ $tax['label'] }} {{ number_format($tax['rate'], 2) }}%</td>
+                <td>{{ $tax['label'] }} {{ LineTaxBreakdown::formatRate($tax['rate']) }}%</td>
                 <td class="num">{{ $money((int) $tax['tax_cents']) }}</td>
             </tr>
         @endforeach

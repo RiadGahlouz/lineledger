@@ -26,6 +26,7 @@ use App\Services\Posting\InvoicePoster;
 use App\Services\Posting\TaxCalculator;
 use App\Support\Money;
 use App\Support\Quantity;
+use App\Support\Tax\LineTaxBreakdown;
 use Carbon\CarbonImmutable;
 use Flux\Flux;
 use Illuminate\Validation\Rule;
@@ -996,7 +997,7 @@ new #[Title('Invoice')] class extends Component
     /**
      * Per-tax-code breakdown of the live line tax, so the footer can show each tax
      * (e.g. GST and PST) on its own row rather than one combined "Tax" total. Mirrors
-     * {@see \App\Support\Tax\LineTaxBreakdown} but reads the unsaved component state.
+     * {@see LineTaxBreakdown} but reads the unsaved component state.
      *
      * @return array<int, array{label: string, rate: float, tax_cents: int}>
      */
@@ -1410,7 +1411,7 @@ new #[Title('Invoice')] class extends Component
                     </tr>
                     @forelse ($this->taxBreakdown as $taxRow)
                         <tr data-test="invoice-tax-row">
-                            <td colspan="{{ $this->lineLeadingColspan }}" class="px-2 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ number_format($taxRow['rate'], 2) }}%</td>
+                            <td colspan="{{ $this->lineLeadingColspan }}" class="px-2 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ LineTaxBreakdown::formatRate($taxRow['rate']) }}%</td>
                             <td class="px-2 py-2 text-right font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</td>
                             <td></td>
                         </tr>
@@ -1446,7 +1447,7 @@ new #[Title('Invoice')] class extends Component
             <div class="space-y-1 border-t border-border bg-muted px-3 py-3 text-sm lg:hidden">
                 <div class="flex justify-between"><span class="font-medium">{{ __('Subtotal') }}</span><span class="font-mono">{{ number_format($this->totals['subtotal'] / 100, 2) }}</span></div>
                 @forelse ($this->taxBreakdown as $taxRow)
-                    <div class="flex justify-between"><span class="font-medium">{{ $taxRow['label'] }} {{ number_format($taxRow['rate'], 2) }}%</span><span class="font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</span></div>
+                    <div class="flex justify-between"><span class="font-medium">{{ $taxRow['label'] }} {{ LineTaxBreakdown::formatRate($taxRow['rate']) }}%</span><span class="font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</span></div>
                 @empty
                     <div class="flex justify-between"><span class="font-medium">{{ __('Tax') }}</span><span class="font-mono">{{ number_format($this->totals['tax'] / 100, 2) }}</span></div>
                 @endforelse

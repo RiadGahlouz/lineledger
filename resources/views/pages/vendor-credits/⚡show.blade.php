@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\VendorCredit;
 use App\Services\AttachmentService;
 use App\Services\Posting\VendorCreditPoster;
+use App\Support\Tax\LineTaxBreakdown;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
@@ -178,11 +179,11 @@ new #[Title('Vendor credit')] class extends Component {
                     <td class="px-4 py-2 text-right font-mono">{{ number_format($vendorCredit->subtotal_cents / 100, 2) }}</td>
                 </tr>
                 @php
-                    $taxRows = \App\Support\Tax\LineTaxBreakdown::forLines($vendorCredit->lines);
+                    $taxRows = LineTaxBreakdown::forLines($vendorCredit->lines);
                 @endphp
                 @forelse ($taxRows as $taxRow)
                     <tr data-test="vendor-credit-tax-row">
-                        <td colspan="5" class="px-4 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ number_format($taxRow['rate'], 2) }}%</td>
+                        <td colspan="5" class="px-4 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ LineTaxBreakdown::formatRate($taxRow['rate']) }}%</td>
                         <td class="px-4 py-2 text-right font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</td>
                     </tr>
                 @empty

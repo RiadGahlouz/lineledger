@@ -4,6 +4,7 @@ use App\Enums\BillStatus;
 use App\Models\Bill;
 use App\Models\Company;
 use App\Services\Posting\BillPoster;
+use App\Support\Tax\LineTaxBreakdown;
 use Flux\Flux;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -145,9 +146,9 @@ new #[Title('Reimbursement')] class extends Component {
                 @endforeach
             </tbody>
             <tfoot class="bg-muted">
-                @foreach (\App\Support\Tax\LineTaxBreakdown::forLines($bill->lines) as $taxRow)
+                @foreach (LineTaxBreakdown::forLines($bill->lines) as $taxRow)
                     <tr data-test="reimbursement-tax-row">
-                        <td colspan="5" class="px-4 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ number_format($taxRow['rate'], 2) }}%</td>
+                        <td colspan="5" class="px-4 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ LineTaxBreakdown::formatRate($taxRow['rate']) }}%</td>
                         <td class="px-4 py-2 text-right font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</td>
                     </tr>
                 @endforeach

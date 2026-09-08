@@ -4,6 +4,7 @@ use App\Actions\Purchasing\FulfillPurchaseOrder;
 use App\Enums\PurchaseOrderStatus;
 use App\Models\Company;
 use App\Models\PurchaseOrder;
+use App\Support\Tax\LineTaxBreakdown;
 use Flux\Flux;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -242,11 +243,11 @@ new #[Title('Purchase Order')] class extends Component {
                     <td class="px-4 py-2 text-right font-mono">{{ number_format($purchaseOrder->subtotal_cents / 100, 2) }}</td>
                 </tr>
                 @php
-                    $taxRows = \App\Support\Tax\LineTaxBreakdown::forLines($purchaseOrder->lines);
+                    $taxRows = LineTaxBreakdown::forLines($purchaseOrder->lines);
                 @endphp
                 @forelse ($taxRows as $taxRow)
                     <tr data-test="purchase-order-tax-row">
-                        <td colspan="7" class="px-4 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ number_format($taxRow['rate'], 2) }}%</td>
+                        <td colspan="7" class="px-4 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ LineTaxBreakdown::formatRate($taxRow['rate']) }}%</td>
                         <td class="px-4 py-2 text-right font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</td>
                     </tr>
                 @empty
