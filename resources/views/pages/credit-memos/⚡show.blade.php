@@ -547,9 +547,9 @@ new #[Title('Credit memo')] class extends Component {
                         </td>
                         @if ($fieldVisibility['tax_column'])
                             <td class="px-4 py-2 text-muted-foreground">
-                                {{ optional($line->taxCode)->code }}
+                                {{ optional($line->taxCode)->label() }}
                                 @if ($line->secondaryTaxCode)
-                                    <span class="block">{{ $line->secondaryTaxCode->code }}</span>
+                                    <span class="block">{{ $line->secondaryTaxCode->label() }}</span>
                                 @endif
                             </td>
                         @endif
@@ -602,7 +602,7 @@ new #[Title('Credit memo')] class extends Component {
     @if ($taxRegistrations->isNotEmpty())
         <div class="mt-4 space-y-1 text-sm text-muted-foreground" data-test="credit-memo-tax-registrations">
             @foreach ($taxRegistrations as $agency)
-                <div>{{ $agency->name }}: <span class="font-mono">{{ $agency->registration_number }}</span></div>
+                <div>{{ $agency->label() }}: <span class="font-mono">{{ $agency->registration_number }}</span></div>
             @endforeach
         </div>
     @endif

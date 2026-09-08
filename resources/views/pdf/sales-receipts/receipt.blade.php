@@ -111,7 +111,7 @@
                     <td>{{ $line->description }}</td>
                     <td class="num">{{ rtrim(rtrim((string) $line->quantity, '0'), '.') }}</td>
                     <td class="num">{{ number_format($line->unit_price_cents / 100, 2) }}</td>
-                    <td>{{ $line->taxCode?->code ?? '—' }}</td>
+                    <td>{{ $line->taxCode?->label() ?? '—' }}</td>
                     <td class="num">{{ number_format($line->line_total_cents / 100, 2) }}</td>
                 </tr>
             @endforeach

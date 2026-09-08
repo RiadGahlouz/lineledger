@@ -218,9 +218,9 @@ new #[Title('Estimate')] class extends Component {
                             @endif
                         </td>
                         <td class="px-4 py-2 text-muted-foreground">
-                            {{ optional($line->taxCode)->code }}
+                            {{ optional($line->taxCode)->label() }}
                             @if ($line->secondaryTaxCode)
-                                <span class="block">{{ $line->secondaryTaxCode->code }}</span>
+                                <span class="block">{{ $line->secondaryTaxCode->label() }}</span>
                             @endif
                         </td>
                         <td class="px-4 py-2 text-right font-mono">{{ number_format($line->line_subtotal_cents / 100, 2) }}</td>
@@ -272,7 +272,7 @@ new #[Title('Estimate')] class extends Component {
     @if ($taxRegistrations->isNotEmpty())
         <div class="mt-4 space-y-1 text-sm text-muted-foreground" data-test="estimate-tax-registrations">
             @foreach ($taxRegistrations as $agency)
-                <div>{{ $agency->name }}: <span class="font-mono">{{ $agency->registration_number }}</span></div>
+                <div>{{ $agency->label() }}: <span class="font-mono">{{ $agency->registration_number }}</span></div>
             @endforeach
         </div>
     @endif

@@ -170,9 +170,9 @@ new #[Title('Cheque')] class extends Component {
                         <td class="px-4 py-2">{{ optional($line->account)->code }} — {{ optional($line->account)->name }}</td>
                         <td class="px-4 py-2 text-muted-foreground">{{ $line->description }}</td>
                         <td class="px-4 py-2 text-muted-foreground">
-                            {{ optional($line->taxCode)->code }}
+                            {{ optional($line->taxCode)->label() }}
                             @if ($line->secondaryTaxCode)
-                                <span class="block">{{ $line->secondaryTaxCode->code }}</span>
+                                <span class="block">{{ $line->secondaryTaxCode->label() }}</span>
                             @endif
                         </td>
                         <td class="px-4 py-2 text-right font-mono">{{ number_format($line->amount_cents / 100, 2) }}</td>

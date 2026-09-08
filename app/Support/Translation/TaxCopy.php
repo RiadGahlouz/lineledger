@@ -31,6 +31,11 @@ final class TaxCopy
             __('RST-MB'),
             __('ZR'),
             __('Zero-rated (0%)'),
+            __('Canada Revenue Agency'),
+            __('Revenu Québec'),
+            __('BC Ministry of Finance'),
+            __('Saskatchewan Ministry of Finance'),
+            __('Manitoba Finance'),
         ];
     }
 }

@@ -141,7 +141,7 @@
                         @endif
                     </td>
                     @if ($settings->show_tax_column)
-                        <td>{{ optional($line->taxCode)->code }}</td>
+                        <td>{{ optional($line->taxCode)->label() }}</td>
                     @endif
                     <td class="num">
                         {{ number_format($line->unit_price_cents / 100, 2) }}

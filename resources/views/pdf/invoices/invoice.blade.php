@@ -194,7 +194,7 @@
                         <td class="num">{{ rtrim(rtrim((string) $line->quantity, '0'), '.') }}</td>
                     @endif
                     @if ($settings->show_tax_column)
-                        <td>{{ optional($line->taxCode)->code }}</td>
+                        <td>{{ optional($line->taxCode)->label() }}</td>
                     @endif
                     @if ($settings->show_unit_column)
                         <td class="num">

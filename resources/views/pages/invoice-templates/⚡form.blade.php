@@ -322,7 +322,7 @@ new #[Title('Invoice template')] class extends Component {
 
                 $code = $codes[$id] ?? null;
                 $rows[$id] ??= [
-                    'label' => $code ? (string) $code->name : '',
+                    'label' => $code?->label() ?? '',
                     'rate' => $code ? $code->ratePercent() : 0.0,
                     'tax_cents' => 0,
                 ];
