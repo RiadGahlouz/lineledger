@@ -15,6 +15,7 @@ use App\Http\Middleware\RequireTwoFactorConfirmation;
 use App\Http\Middleware\ResolvePortalCompany;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetCompanyUrlDefaults;
+use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\VerifyTurnstile;
 use App\Models\Company;
 use Illuminate\Auth\AuthenticationException;
@@ -59,6 +60,7 @@ return Application::configure(basePath: dirname(__DIR__))
             EnsureLegalAcceptance::class,
             EnsureUserHasCompany::class,
             SetCompanyUrlDefaults::class,
+            SetLocale::class,
             // Bot challenge on the public auth forms (register / login / reset
             // link). Inert unless Turnstile keys are configured; see
             // config/turnstile.php for which routes it covers.

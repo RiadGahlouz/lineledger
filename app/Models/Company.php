@@ -56,6 +56,7 @@ use Illuminate\Support\Facades\Storage;
     'unrealized_gain_loss_account_id',
     'fiscal_year_start_month',
     'timezone',
+    'locale',
     'auto_apply_customer_credits',
     'warn_duplicate_bill_no',
     'cheque_offset_x',

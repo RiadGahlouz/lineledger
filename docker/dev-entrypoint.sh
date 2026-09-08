@@ -48,9 +48,13 @@ case "$ROLE" in
     app)
         composer install --no-interaction --prefer-dist
         npm install
-        wait_for_mysql
-        sync_app_key
-        php artisan migrate --force
+        if [ "${DB_CONNECTION:-mysql}" = "sqlite" ]; then
+            sync_app_key
+        else
+            wait_for_mysql
+            sync_app_key
+            php artisan migrate --force
+        fi
         # Relative link so it resolves both in the container (/app) and on the host.
         ln -sfn ../storage/app/public public/storage
         if [ ! -f storage/oauth-private.key ]; then

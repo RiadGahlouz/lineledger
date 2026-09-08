@@ -71,6 +71,9 @@
             collect([$invoice->contact?->shipping_city, $invoice->contact?->shipping_region, $invoice->contact?->shipping_postal_code])->filter()->implode(', '),
         ])->filter()->values();
 
+        $currency = $invoice->currency_code ?: $company->currency_code;
+        $money = fn (int $cents): string => \App\Support\Locales::formatMoney($cents, $currency);
+
         // Description + Amount always show; the rest are toggleable.
         $columns = 2
             + ($settings->show_qty_column ? 1 : 0)
@@ -97,7 +100,7 @@
                         <th>{{ __('Invoice #') }}</th>
                     </tr>
                     <tr>
-                        <td>{{ $invoice->invoice_date?->format('n/j/Y') }}</td>
+                        <td>{{ \App\Support\Locales::formatDate($invoice->invoice_date) }}</td>
                         <td>{{ $invoice->invoice_no }}</td>
                     </tr>
                 </table>
@@ -136,7 +139,7 @@
         </tr>
         <tr>
             <td>{{ optional($invoice->terms)->name ?? '—' }}</td>
-            <td>{{ $invoice->due_date?->format('n/j/Y') ?? '—' }}</td>
+            <td>{{ \App\Support\Locales::formatDate($invoice->due_date) }}</td>
             <td>{{ $invoice->customer_po ?: '—' }}</td>
             <td>{{ optional($invoice->salesRep)->display_name ?? '—' }}</td>
         </tr>
@@ -151,7 +154,7 @@
                 <th>{{ __('Tracking #') }}</th>
             </tr>
             <tr>
-                <td>{{ $invoice->ship_date?->format('n/j/Y') ?? '—' }}</td>
+                <td>{{ \App\Support\Locales::formatDate($invoice->ship_date) }}</td>
                 <td>{{ $invoice->ship_via ?: '—' }}</td>
                 <td>{{ $invoice->fob ?: '—' }}</td>
                 <td>{{ $invoice->tracking_no ?: '—' }}</td>
@@ -184,7 +187,7 @@
                     <td>
                         {!! \App\Support\Text\LineDescription::toHtml($line->description) !!}
                         @if ($settings->show_service_date_column && $line->service_date)
-                            <div class="muted" style="font-size: 9px;">{{ __('Service date') }}: {{ $line->service_date->format('n/j/Y') }}</div>
+                            <div class="muted" style="font-size: 9px;">{{ __('Service date') }}: {{ \App\Support\Locales::formatDate($line->service_date) }}</div>
                         @endif
                     </td>
                     @if ($settings->show_qty_column)
@@ -195,13 +198,13 @@
                     @endif
                     @if ($settings->show_unit_column)
                         <td class="num">
-                            {{ number_format($line->unit_price_cents / 100, 2) }}
+                            {{ $money((int) $line->unit_price_cents) }}
                             @if ($line->line_discount_cents)
-                                <div class="muted" style="font-size: 9px;">{{ __('less :amt disc', ['amt' => number_format($line->line_discount_cents / 100, 2)]) }}</div>
+                                <div class="muted" style="font-size: 9px;">{{ __('less :amt disc', ['amt' => $money((int) $line->line_discount_cents)]) }}</div>
                             @endif
                         </td>
                     @endif
-                    <td class="num">{{ number_format($line->line_subtotal_cents / 100, 2) }}</td>
+                    <td class="num">{{ $money((int) $line->line_subtotal_cents) }}</td>
                 </tr>
             @endforeach
         </tbody>
@@ -210,26 +213,26 @@
     <table class="totals">
         <tr>
             <td>{{ __('Subtotal') }}</td>
-            <td class="num">{{ number_format($invoice->subtotal_cents / 100, 2) }}</td>
+            <td class="num">{{ $money((int) $invoice->subtotal_cents) }}</td>
         </tr>
         @foreach ($taxSummary as $tax)
             <tr>
                 <td>{{ $tax['label'] }} {{ number_format($tax['rate'], 2) }}%</td>
-                <td class="num">{{ number_format($tax['tax_cents'] / 100, 2) }}</td>
+                <td class="num">{{ $money((int) $tax['tax_cents']) }}</td>
             </tr>
         @endforeach
         <tr class="grand">
             <td>{{ __('Total') }}</td>
-            <td class="num">${{ number_format($invoice->total_cents / 100, 2) }}</td>
+            <td class="num">{{ $money((int) $invoice->total_cents) }}</td>
         </tr>
         @if ($invoice->amount_paid_cents > 0)
             <tr>
                 <td>{{ __('Paid') }}</td>
-                <td class="num">{{ number_format($invoice->amount_paid_cents / 100, 2) }}</td>
+                <td class="num">{{ $money((int) $invoice->amount_paid_cents) }}</td>
             </tr>
             <tr>
                 <td>{{ __('Balance Due') }}</td>
-                <td class="num">${{ number_format($invoice->balanceCents() / 100, 2) }}</td>
+                <td class="num">{{ $money($invoice->balanceCents()) }}</td>
             </tr>
         @endif
     </table>
@@ -248,8 +251,8 @@
                 @foreach ($schedule as $row)
                     <tr>
                         <td>{{ $row['request']->label }}</td>
-                        <td>{{ $row['request']->due_date?->toDateString() }}</td>
-                        <td class="num">{{ number_format($row['request']->amount_cents / 100, 2) }}</td>
+                        <td>{{ \App\Support\Locales::formatDate($row['request']->due_date) }}</td>
+                        <td class="num">{{ $money((int) $row['request']->amount_cents) }}</td>
                         <td class="num">{{ $row['status']->label() }}</td>
                     </tr>
                 @endforeach
