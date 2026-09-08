@@ -28,6 +28,20 @@ it('has a French catalog entry for every static translation key', function () {
     expect($missing)->toBeEmpty('Missing French translations ('.count($missing).'): '.implode(' | ', array_slice($missing, 0, 40)));
 });
 
+it('does not keep unused keys in the French catalog', function () {
+    $catalog = json_decode((string) file_get_contents(lang_path('fr.json')), true, flags: JSON_THROW_ON_ERROR);
+    $used = array_fill_keys(KeyExtractor::referencedKeys(), true);
+
+    $unused = [];
+    foreach (array_keys($catalog) as $key) {
+        if (! isset($used[$key])) {
+            $unused[] = $key;
+        }
+    }
+
+    expect($unused)->toBeEmpty('Unused French catalog keys ('.count($unused).'): '.implode(' | ', array_slice($unused, 0, 40)));
+});
+
 it('preserves placeholders in French catalog entries', function () {
     $catalog = json_decode((string) file_get_contents(lang_path('fr.json')), true, flags: JSON_THROW_ON_ERROR);
 

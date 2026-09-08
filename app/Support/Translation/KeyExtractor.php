@@ -8,7 +8,8 @@ use RecursiveIteratorIterator;
 use SplFileInfo;
 
 /**
- * Collects static __('…') / __("…") source keys under app/ and resources/.
+ * Collects static __('…') / __("…") source keys under app/ and resources/,
+ * plus Livewire #[Title] strings which partials/head.blade.php passes through __().
  */
 final class KeyExtractor
 {
@@ -16,6 +17,58 @@ final class KeyExtractor
      * @return list<string>
      */
     public static function keys(): array
+    {
+        return self::collect(static fn (string $contents): array => self::keysIn($contents));
+    }
+
+    /**
+     * Keys that count as used in lang/*.json: static __() plus #[Title('…')].
+     *
+     * @return list<string>
+     */
+    public static function referencedKeys(): array
+    {
+        return self::collect(static fn (string $contents): array => [
+            ...self::keysIn($contents),
+            ...self::titleKeysIn($contents),
+        ]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function keysIn(string $contents): array
+    {
+        preg_match_all('/__\(\s*([\'"])((?:\\\\.|(?!\1).)*?)\1/s', $contents, $matches);
+
+        $keys = [];
+        foreach ($matches[2] as $raw) {
+            $keys[] = stripcslashes($raw);
+        }
+
+        return $keys;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function titleKeysIn(string $contents): array
+    {
+        preg_match_all('/\bTitle\(\s*([\'"])((?:\\\\.|(?!\1).)*?)\1/s', $contents, $matches);
+
+        $keys = [];
+        foreach ($matches[2] as $raw) {
+            $keys[] = stripcslashes($raw);
+        }
+
+        return $keys;
+    }
+
+    /**
+     * @param  callable(string): list<string>  $extract
+     * @return list<string>
+     */
+    private static function collect(callable $extract): array
     {
         $found = [];
 
@@ -45,7 +98,7 @@ final class KeyExtractor
                     continue;
                 }
 
-                foreach (self::keysIn($contents) as $key) {
+                foreach ($extract($contents) as $key) {
                     $found[$key] = true;
                 }
             }
@@ -53,21 +106,6 @@ final class KeyExtractor
 
         $keys = array_keys($found);
         sort($keys);
-
-        return $keys;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public static function keysIn(string $contents): array
-    {
-        preg_match_all('/__\(\s*([\'"])((?:\\\\.|(?!\1).)*?)\1/s', $contents, $matches);
-
-        $keys = [];
-        foreach ($matches[2] as $raw) {
-            $keys[] = stripcslashes($raw);
-        }
 
         return $keys;
     }
