@@ -238,7 +238,9 @@
         @endif
     </table>
 
-    @php($schedule = $invoice->paymentRequests->isNotEmpty() ? app(\App\Services\Sales\PaymentRequestScheduleStatus::class)->for($invoice) : collect())
+    @php
+        $schedule = $invoice->paymentRequests->isNotEmpty() ? app(\App\Services\Sales\PaymentRequestScheduleStatus::class)->for($invoice) : collect();
+    @endphp
     @if ($settings->show_payment_schedule && $schedule->isNotEmpty())
         <table class="data" style="margin-top: 16px;">
             <thead>
@@ -264,6 +266,24 @@
     <div class="footer">
         @if ($settings->show_tax_number && filled($company->tax_number))
             <div class="taxno">{{ __('GST/HST No.') }} {{ $company->tax_number }}</div>
+        @endif
+        @php
+            $provincialTaxNumber = $company->provincialTaxNumber();
+            $provincialTaxLabel = $company->provincialTaxLabel();
+            if (! filled($provincialTaxNumber) && isset($invoice)) {
+                foreach ($invoice->lines as $invLine) {
+                    foreach ([$invLine->taxCode, $invLine->secondaryTaxCode] as $taxCode) {
+                        if ($taxCode && $taxCode->agency && filled($taxCode->agency->registration_number) && $taxCode->agency->name !== 'Canada Revenue Agency') {
+                            $provincialTaxNumber = $taxCode->agency->registration_number;
+                            $provincialTaxLabel = str_contains($taxCode->agency->name, 'Québec') || str_contains($taxCode->agency->name, 'Quebec') ? __('QST') : (str_contains($taxCode->agency->name, 'Manitoba') ? __('RST') : __('PST'));
+                            break 2;
+                        }
+                    }
+                }
+            }
+        @endphp
+        @if ($settings->show_tax_number && filled($provincialTaxNumber))
+            <div class="taxno">{{ __(':tax No.', ['tax' => $provincialTaxLabel]) }} {{ $provincialTaxNumber }}</div>
         @endif
         @if (filled($invoice->customer_message))
             <div class="message">{{ $invoice->customer_message }}</div>

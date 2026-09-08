@@ -18,6 +18,7 @@ use App\Support\Jurisdiction\JurisdictionProfile;
 use App\Support\Locales;
 use App\Support\SiteSettings;
 use App\Support\Storage\StorageDisks;
+use App\Support\Tax\ProvincialSalesTax;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Database\Factories\CompanyFactory;
@@ -277,6 +278,14 @@ class Company extends Model
     public function apiKeys(): HasMany
     {
         return $this->hasMany(CompanyApiKey::class);
+    }
+
+    /**
+     * @return HasMany<TaxAgency, $this>
+     */
+    public function taxAgencies(): HasMany
+    {
+        return $this->hasMany(TaxAgency::class);
     }
 
     /**
@@ -690,6 +699,108 @@ class Company extends Model
     public function usesSecondaryTax(): bool
     {
         return true;
+    }
+
+    /**
+     * The provincial sales tax levied by the company's province, or null if
+     * in an HST province, a GST-only province/territory, or outside Canada.
+     */
+    public function provincialSalesTax(): ?ProvincialSalesTax
+    {
+        if ($this->jurisdiction !== Country::Canada) {
+            return null;
+        }
+
+        return ProvincialSalesTax::forRegion($this->address_region);
+    }
+
+    /**
+     * The tax agency administering the company's provincial sales tax (e.g.
+     * Revenu Québec for QC, BC Ministry of Finance for BC), or any active
+     * provincial/secondary tax agency carrying a registration number.
+     */
+    public function provincialTaxAgency(): ?TaxAgency
+    {
+        $pst = $this->provincialSalesTax();
+
+        if ($pst !== null) {
+            $agency = TaxAgency::withoutGlobalScopes()
+                ->where('company_id', $this->id)
+                ->where('name', $pst->agencyName())
+                ->first();
+
+            if ($agency) {
+                return $agency;
+            }
+
+            $account = Account::withoutGlobalScopes()
+                ->where('company_id', $this->id)
+                ->where('code', '2210')
+                ->first();
+
+            if ($account) {
+                $agency = TaxAgency::withoutGlobalScopes()
+                    ->where('company_id', $this->id)
+                    ->where('payable_account_id', $account->id)
+                    ->first();
+
+                if ($agency) {
+                    return $agency;
+                }
+            }
+        }
+
+        // Fallback: any active tax agency for this company with a registration
+        // number that is not CRA / federal (account 2200).
+        $craAccount = Account::withoutGlobalScopes()
+            ->where('company_id', $this->id)
+            ->where('code', '2200')
+            ->first();
+
+        return TaxAgency::withoutGlobalScopes()
+            ->where('company_id', $this->id)
+            ->where('is_active', true)
+            ->whereNotNull('registration_number')
+            ->where('registration_number', '!=', '')
+            ->when($craAccount, fn ($q) => $q->where('payable_account_id', '!=', $craAccount->id))
+            ->where('name', '!=', 'Canada Revenue Agency')
+            ->first();
+    }
+
+    /**
+     * The provincial tax registration number (e.g. Revenu Québec TVQ/QST number).
+     */
+    public function provincialTaxNumber(): ?string
+    {
+        return $this->provincialTaxAgency()?->registration_number;
+    }
+
+    /**
+     * Display label for the provincial sales tax (e.g. QST/TVQ for Quebec, PST for BC).
+     */
+    public function provincialTaxLabel(): string
+    {
+        $pst = $this->provincialSalesTax();
+        if ($pst !== null) {
+            return $pst->taxLabel();
+        }
+
+        $agency = $this->provincialTaxAgency();
+        if ($agency) {
+            if (str_contains($agency->name, 'Québec') || str_contains($agency->name, 'Quebec')) {
+                return __('QST');
+            }
+            if (str_contains($agency->name, 'Manitoba')) {
+                return __('RST');
+            }
+            if (str_contains($agency->name, 'Columbia') || str_contains($agency->name, 'Saskatchewan')) {
+                return __('PST');
+            }
+
+            return $agency->label();
+        }
+
+        return __('PST');
     }
 
     /**

@@ -199,6 +199,43 @@ it('renders estimate chrome in the customer document language', function () {
         ->and($html)->not->toContain('>ESTIMATE<');
 });
 
+it('prints both GST and TVQ numbers on an estimate for a Quebec company', function () {
+    $qcCompany = Company::factory()->create([
+        'address_region' => 'QC',
+        'locale' => 'fr',
+        'tax_number' => '123456789 RT0001',
+    ]);
+    $agency = $qcCompany->provincialTaxAgency();
+    $agency?->update(['registration_number' => '1234567890 TQ 0001']);
+
+    $customer = Contact::create([
+        'company_id' => $qcCompany->id,
+        'display_name' => 'Acme Corp',
+        'is_customer' => true,
+        'locale' => 'fr',
+    ]);
+
+    $estimate = Estimate::create([
+        'company_id' => $qcCompany->id,
+        'contact_id' => $customer->id,
+        'estimate_no' => 'EST-QC-001',
+        'estimate_date' => CarbonImmutable::create(2026, 5, 24),
+    ]);
+
+    $html = Locales::forContactDocument($customer, $qcCompany, fn (): string => view('pdf.estimates.estimate', [
+        'company' => $qcCompany,
+        'estimate' => $estimate->load('contact', 'lines.taxCode', 'lines.item', 'terms', 'salesRep'),
+        'settings' => $qcCompany->invoiceSettingsOrNew(),
+        'taxSummary' => [],
+    ])->render());
+
+    expect($html)
+        ->toContain('N° TPS/TVH')
+        ->toContain('123456789 RT0001')
+        ->toContain('N° TVQ')
+        ->toContain('1234567890 TQ 0001');
+});
+
 it('writes a company invitation in the invitee locale', function () {
     $invitee = User::factory()->create(['locale' => 'fr']);
     $invitation = CompanyInvitation::create([

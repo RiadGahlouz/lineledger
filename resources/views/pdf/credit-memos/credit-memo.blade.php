@@ -177,6 +177,13 @@
         @if ($settings->show_tax_number && filled($company->tax_number))
             <div class="taxno">{{ __('GST/HST No.') }} {{ $company->tax_number }}</div>
         @endif
+        @php
+            $provincialTaxNumber = $company->provincialTaxNumber();
+            $provincialTaxLabel = $company->provincialTaxLabel();
+        @endphp
+        @if ($settings->show_tax_number && filled($provincialTaxNumber))
+            <div class="taxno">{{ __(':tax No.', ['tax' => $provincialTaxLabel]) }} {{ $provincialTaxNumber }}</div>
+        @endif
         @if (filled($creditMemo->customer_message))
             <div class="message">{{ $creditMemo->customer_message }}</div>
         @endif
