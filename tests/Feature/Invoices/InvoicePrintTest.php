@@ -10,6 +10,7 @@ use App\Models\InvoiceSetting;
 use App\Models\TaxCode;
 use App\Models\User;
 use App\Services\Posting\InvoicePoster;
+use App\Services\Reporting\InvoicePdfRenderer;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -304,4 +305,23 @@ it('hides the unit price column when the Unit column is toggled off', function (
 
     expect($render(true))->toContain('Price Each');
     expect($render(false))->not->toContain('Price Each');
+});
+
+it('prints invoice in French for Quebec organization when locale is unset', function () {
+    $qcCompany = Company::factory()->create([
+        'address_region' => 'QC',
+        'locale' => null,
+    ]);
+    $qcCompany->members()->attach($this->user, ['role' => CompanyRole::Owner->value]);
+    app()->instance('current_company', $qcCompany);
+
+    $income = Account::query()->where('company_id', $qcCompany->id)->where('subtype', AccountSubtype::Income->value)->first();
+    $gst = TaxCode::query()->where('company_id', $qcCompany->id)->where('code', 'GST')->firstOrFail();
+
+    $invoice = makePostedInvoice((object) ['income' => $income, 'gst' => $gst]);
+
+    $html = app(InvoicePdfRenderer::class)->html($qcCompany, $invoice);
+
+    expect($html)->toContain('FACTURE')
+        ->and($html)->not->toContain('>INVOICE<');
 });

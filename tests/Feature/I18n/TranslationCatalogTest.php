@@ -1,6 +1,7 @@
 <?php
 
 use App\Support\Translation\ChartCopy;
+use App\Support\Translation\GifiCopy;
 use App\Support\Translation\KeyExtractor;
 use App\Support\Translation\TaxCopy;
 
@@ -10,6 +11,10 @@ it('registers starter chart names for translation', function () {
 
 it('registers seeded tax codes for translation', function () {
     expect(TaxCopy::codes())->not->toBeEmpty();
+});
+
+it('registers GIFI catalog strings for translation', function () {
+    expect(GifiCopy::strings())->not->toBeEmpty();
 });
 
 it('has a French catalog entry for every static translation key', function () {

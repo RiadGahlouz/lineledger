@@ -15,6 +15,7 @@ use App\Enums\OrganizationType;
 use App\Enums\RemittanceFrequency;
 use App\Enums\Section;
 use App\Support\Jurisdiction\JurisdictionProfile;
+use App\Support\Locales;
 use App\Support\SiteSettings;
 use App\Support\Storage\StorageDisks;
 use Carbon\CarbonImmutable;
@@ -28,6 +29,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -159,6 +161,12 @@ class Company extends Model
 
             if (empty($company->timezone)) {
                 $company->timezone = $country->defaultTimezone($company->address_region);
+            }
+
+            if (empty($company->locale)) {
+                $company->locale = $company->address_region === 'QC'
+                    ? 'fr'
+                    : (Locales::isSupported(App::getLocale()) ? App::getLocale() : 'en');
             }
         });
 

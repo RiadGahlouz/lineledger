@@ -32,7 +32,7 @@ class DonationReceiptPdfRenderer
     {
         $receipt->loadMissing('contact');
 
-        return Locales::forContactDocument($receipt->contact, $company, fn (): string => $this->pdf->raw('pdf.donations.receipt', $this->data($company, $receipt), $this->filename($receipt)));
+        return Locales::forContactDocument($receipt->contact, $company, fn (): string => $this->pdf->raw('pdf.donations.receipt', $this->data($company, $receipt)));
     }
 
     /**

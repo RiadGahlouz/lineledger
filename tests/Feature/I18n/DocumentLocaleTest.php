@@ -66,6 +66,19 @@ it('resolves document locale from the contact then the company', function () {
     expect(Locales::forDocument($customer->fresh(), $company->fresh()))->toBe('en');
 });
 
+it('defaults document locale to French for a Quebec company when unset', function () {
+    $company = Company::factory()->create(['address_region' => 'QC', 'locale' => null]);
+    $customer = Contact::create(['display_name' => 'Acme', 'is_customer' => true, 'locale' => null]);
+
+    expect(Locales::forDocument($customer, $company))->toBe('fr');
+});
+
+it('defaults company locale to French when created with Quebec region', function () {
+    $company = Company::factory()->create(['address_region' => 'QC']);
+
+    expect($company->locale)->toBe('fr');
+});
+
 it('renders invoice chrome in the customer document language', function () {
     $this->company->update(['locale' => 'en']);
     $customer = Contact::create([

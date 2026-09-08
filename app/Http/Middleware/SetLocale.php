@@ -61,7 +61,7 @@ class SetLocale
         }
 
         if ($company && ($request->is('pay/*') || $request->is('my-pay/*'))) {
-            return Locales::isSupported($company->locale) ? $company->locale : null;
+            return Locales::forDocument(null, $company);
         }
 
         return null;
