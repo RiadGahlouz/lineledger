@@ -27,6 +27,20 @@ afterEach(function () {
     app()->forgetInstance('current_company');
 });
 
+it('shows Quebec QST as TVQ in the French tax picker', function () {
+    TaxCode::query()->create([
+        'code' => 'QST-QC',
+        'name' => 'QST (9.975%)',
+        'rate_basis_points' => 997.5,
+        'is_recoverable' => true,
+    ]);
+
+    app()->setLocale('fr');
+
+    Livewire::test('pages::estimates.form', ['company' => $this->company])
+        ->assertSee('TVQ');
+});
+
 /**
  * @param  array<int, array<string, mixed>>|null  $lines
  */

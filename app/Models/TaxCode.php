@@ -49,6 +49,15 @@ class TaxCode extends Model
     }
 
     /**
+     * Locale-aware label for pickers. Stored codes stay stable (QST-QC);
+     * French UI shows TVQ, TPS, TVH, …
+     */
+    public function label(): string
+    {
+        return __($this->code);
+    }
+
+    /**
      * Codes selectable on purchase documents (bills, expenses, cheques,
      * purchase orders, vendor credits): those flagged purchase-only or both.
      * A sale-only code must never be offered when coding an expense.

@@ -88,10 +88,10 @@ enum ProvincialSalesTax: string
     public function taxCodeName(): string
     {
         return match ($this) {
-            self::BritishColumbia => 'PST (7%)',
-            self::Saskatchewan => 'PST (6%)',
-            self::Manitoba => 'RST (7%)',
-            self::Quebec => 'QST (9.975%)',
+            self::BritishColumbia => __('PST (7%)'),
+            self::Saskatchewan => __('PST (6%)'),
+            self::Manitoba => __('RST (7%)'),
+            self::Quebec => __('QST (9.975%)'),
         };
     }
 

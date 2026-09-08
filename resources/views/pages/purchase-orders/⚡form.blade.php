@@ -609,12 +609,12 @@ new #[Title('Purchase Order')] class extends Component
                                 @php($selectedTaxIds = $line['tax_code_ids'] ?? [])
                                 <flux:dropdown>
                                     <flux:button variant="outline" size="sm" icon:trailing="chevron-down" class="w-full justify-between font-normal" data-test="line-tax">
-                                        <span class="truncate">{{ $this->taxCodeOptions->whereIn('id', $selectedTaxIds)->pluck('code')->implode(', ') ?: __('Select tax') }}</span>
+                                        <span class="truncate">{{ $this->taxCodeOptions->whereIn('id', $selectedTaxIds)->map->label()->implode(', ') ?: __('Select tax') }}</span>
                                     </flux:button>
                                     <flux:menu>
                                         <flux:menu.checkbox.group wire:model.live="lines.{{ $i }}.tax_code_ids">
                                             @foreach ($this->taxCodeOptions as $opt)
-                                                <flux:menu.checkbox value="{{ $opt->id }}" :disabled="count($selectedTaxIds) === 2 && ! in_array($opt->id, $selectedTaxIds)" keep-open>{{ $opt->code }}</flux:menu.checkbox>
+                                                <flux:menu.checkbox value="{{ $opt->id }}" :disabled="count($selectedTaxIds) === 2 && ! in_array($opt->id, $selectedTaxIds)" keep-open>{{ $opt->label() }}</flux:menu.checkbox>
                                             @endforeach
                                         </flux:menu.checkbox.group>
                                     </flux:menu>

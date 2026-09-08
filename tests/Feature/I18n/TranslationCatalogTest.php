@@ -2,9 +2,14 @@
 
 use App\Support\Translation\ChartCopy;
 use App\Support\Translation\KeyExtractor;
+use App\Support\Translation\TaxCopy;
 
 it('registers starter chart names for translation', function () {
     expect(ChartCopy::names())->not->toBeEmpty();
+});
+
+it('registers seeded tax codes for translation', function () {
+    expect(TaxCopy::codes())->not->toBeEmpty();
 });
 
 it('has a French catalog entry for every static translation key', function () {
