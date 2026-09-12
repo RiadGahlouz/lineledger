@@ -337,7 +337,11 @@ so GL-driven statements match aging), `payroll:backfill-accounts` (create the
 system payroll GL accounts on existing Canadian organizations), and
 `banking:backfill-line-memos` (append each posted document's own memo to its bank
 journal line, so the bank register reads "Deposit: August rent" instead of a bare
-"Deposit"; wording only, amounts untouched).
+"Deposit"; wording only, amounts untouched), and
+`banking:backfill-reconciliation-stamps [--dry-run]` (un-clear the service-charge
+and interest lines a completed reconciliation replaced or left unticked, so the
+register's cleared balance matches the reconciliation; reconciliations whose
+ticked lines no longer line up, e.g. after a restore, are skipped and listed).
 
 ## Operating & maintenance
 
