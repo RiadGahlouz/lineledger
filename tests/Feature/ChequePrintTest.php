@@ -74,8 +74,10 @@ it('prepares cheque draw data from the Cheque model', function () {
     expect($data['memo'])->toBe('test');
     expect($data['amount_words'])->toEndWith('Five and 00/100');
     expect($data['lines'])->toHaveCount(1);
+    // The voucher names the account the way QuickBooks does: "200 · Customer
+    // Receivables" — the code alone means nothing to whoever opens the envelope.
     expect($data['lines'][0])->toMatchArray([
-        'account' => $cheque->lines[0]->account->code,
+        'account' => $cheque->lines[0]->account->code.' · '.$cheque->lines[0]->account->name,
         'description' => 'Rent',
         'amount' => '5.00',
     ]);
