@@ -73,21 +73,24 @@ it('sets each band of the cheque in the size Intuit uses', function () {
         ->toContain('/F1 10.020000 Tf')  // amount lines + everything on the stubs
         ->toContain('/F1 9.000000 Tf')   // payee and address
         ->toContain('/F1 7.980000 Tf')   // DATE / MEMO labels and the memo text
-        ->toContain('/F1 6.000000 Tf');  // M M D D Y Y Y Y legend
+        ->toContain('/F1 6.000000 Tf');  // Y Y Y Y M M D D legend
 });
 
 it('lands the cheque band on the Intuit baselines', function () {
     $ops = laidOutCheque();
 
     expect($ops)
-        // DATE label, then the eight date digits on an 11.142 pt pitch.
+        // DATE label, then the eight date digits — YYYYMMDD — on an 11.142 pt pitch.
         ->toContain('463.020000 709.260000 Td [(DATE)]')
-        ->toContain('495.000000 709.680000 Td [(0)]')
-        ->toContain('506.142000 709.680000 Td [(9)]')
-        ->toContain('572.994000 709.680000 Td [(6)]')
-        ->toContain('496.020000 699.780000 Td [(M    M    D    D    Y    Y    Y    Y)]')
-        // Amount in words (star-padded to 39) and the numeric box, one baseline.
-        ->toContain('72.000000 674.700000 Td [(******Five Hundred Fifty-Two and 67/100)]')
+        ->toContain('495.000000 709.680000 Td [(2)]')
+        ->toContain('506.142000 709.680000 Td [(0)]')
+        ->toContain('528.426000 709.680000 Td [(6)]')
+        ->toContain('539.568000 709.680000 Td [(0)]')
+        ->toContain('550.710000 709.680000 Td [(9)]')
+        ->toContain('572.994000 709.680000 Td [(5)]')
+        ->toContain('496.020000 699.780000 Td [(Y    Y    Y    Y    M    M    D    D)]')
+        // PAY line (five stars, then the words) and the numeric box, one baseline.
+        ->toContain('72.000000 674.700000 Td [(*****Five Hundred Fifty-Two and 67/100)]')
         ->toContain('487.980000 674.700000 Td [(**552.67)]')
         // Payee, then MEMO and its text in the small face.
         ->toContain('72.000000 633.480000 Td [(Estate of Joan Paddick)]')
@@ -143,4 +146,21 @@ it('clips a stub column rather than printing over the next one', function () {
 
 it('prints nothing on the cheque that we did not put there', function () {
     expect(laidOutCheque())->not->toContain('Powered by TCPDF');
+});
+
+it('prints five stars before the PAY amount whatever its length', function () {
+    $ops = laidOutCheque();
+
+    expect($ops)
+        ->toContain('[(*****Five Hundred Fifty-Two and 67/100)]')
+        ->not->toContain('******Five');
+});
+
+it('orders the date comb and its legend from the configured format', function () {
+    config(['cheque.date_comb_format' => 'dmY']);
+
+    expect(laidOutCheque())
+        ->toContain('495.000000 709.680000 Td [(1)]')   // 15 09 2026
+        ->toContain('506.142000 709.680000 Td [(5)]')
+        ->toContain('496.020000 699.780000 Td [(D    D    M    M    Y    Y    Y    Y)]');
 });

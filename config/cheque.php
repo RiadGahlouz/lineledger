@@ -21,11 +21,19 @@ return [
     'offset_y' => 0.0,
 
     /*
-     * Draw the static labels (DATE, MEMO, the M M D D Y Y Y Y comb legend).
+     * Draw the static labels (DATE, MEMO, the Y Y Y Y M M D D comb legend).
      * Set to false when printing onto pre-printed Intuit/QuickBooks stock that
      * already has them.
      */
     'draw_static_labels' => true,
+
+    /*
+     * Order of the eight date-comb digits, as a PHP date format built from Y,
+     * m and d. Canadian cheques (Payments Canada Standard 006) print the
+     * format under the comb, so the Y Y Y Y M M D D legend is derived from
+     * this and the two can't disagree.
+     */
+    'date_comb_format' => 'Ymd',
 
     /*
      * Date comb digit pitch. Intuit sets the comb as one run of digits
@@ -41,12 +49,12 @@ return [
     'voucher_band_pitch' => 252.0,
 
     /*
-     * Star-fill for the amount-in-words line ("******Five Hundred ..."). The
-     * words are padded on the left to this many characters; Intuit pads to 39.
-     * It is protection against an inserted word, not a fill to the margin —
-     * long amounts simply get no stars.
+     * Stars printed in front of the amount on the PAY line
+     * ("*****Five Hundred ..."), whatever the amount's length. They guard the
+     * start of the line against an inserted word; they are not a fill to the
+     * margin.
      */
-    'amount_words_pad_width' => 39,
+    'amount_words_star_prefix' => 5,
 
     /*
      * Payee address block, drawn under the payee name. Intuit sets the address
@@ -75,10 +83,10 @@ return [
     'fonts' => [
         'family' => 'helvetica',   // Helvetica: same metrics as Intuit's ArialMT
         'size_body' => 10.02,      // amount lines on the face, everything on the stubs
-        'size_date_comb' => 10.02, // the M M D D Y Y Y Y digits
+        'size_date_comb' => 10.02, // the eight date digits
         'size_payee' => 9.0,       // payee + address block
         'size_label' => 7.98,      // DATE, MEMO — and the memo text itself
-        'size_subscript' => 6.0,   // M M D D Y Y Y Y legend under the digits
+        'size_subscript' => 6.0,   // Y Y Y Y M M D D legend under the digits
     ],
 
     /* "DATE" label, relative to the first date digit. */
@@ -86,13 +94,13 @@ return [
     'date_label_drop' => 0.42,
 
     /*
-     * The comb legend under the digits. Intuit draws it as one run, so the
-     * letters sit on their own (slightly uneven) rhythm rather than centring
-     * under each digit — reproduced literally.
+     * The comb legend under the digits. Intuit draws it as one run with four
+     * spaces between letters, so the letters sit on their own (slightly
+     * uneven) rhythm rather than centring under each digit — reproduced
+     * literally. The letters come from `date_comb_format`.
      */
     'date_subscript_drop' => 9.9,
     'date_subscript_x_offset' => 1.02,
-    'date_subscript_text' => 'M    M    D    D    Y    Y    Y    Y',
 
     /*
      * Field coordinates. Each entry is [x, baseline]. The renderer applies
