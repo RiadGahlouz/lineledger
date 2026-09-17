@@ -1,6 +1,10 @@
 import './charts.js';
 import { evaluateAmountExpression, isAmountExpression, roundHalfUp } from './amount-expression.js';
 import { editLockBlockedPoller, editLockKeeper } from './edit-lock.js';
+import { installEscapeBack } from './escape-back.js';
+
+/** Escape goes back to the previous page. See ./escape-back.js. */
+installEscapeBack();
 
 document.addEventListener('alpine:init', () => {
     /**

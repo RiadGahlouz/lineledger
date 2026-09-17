@@ -3,7 +3,11 @@
     <head>
         @include('partials.head')
     </head>
-<body class="min-h-screen bg-background">
+<body
+    class="min-h-screen bg-background"
+    @if (auth()->user()?->escape_goes_back) data-escape-back @endif
+    data-escape-back-confirm="{{ __('Leave this page? Changes you haven\'t saved will be lost.') }}"
+>
         <flux:sidebar sticky collapsible="mobile" class="border-e border-sidebar-border bg-sidebar">
             <flux:sidebar.header>
                 <livewire:company-switcher />
