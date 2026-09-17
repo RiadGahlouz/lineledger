@@ -7,6 +7,7 @@ use App\Enums\ChequeStatus;
 use App\Models\Cheque;
 use App\Models\Contact;
 use App\Models\TaxCode;
+use App\Support\Accounting\ControlAccountRoles;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -37,6 +38,12 @@ use Illuminate\Support\Facades\DB;
  *
  * tax_override_cents, when non-null, is the exact tax the user typed and wins
  * over the tax code's computed amount.
+ *
+ * Every tax key is ignored on a line coded to an AR/AP control account: that
+ * balance already includes the tax its originating invoice or bill recorded, so
+ * taxing the settlement again double-counts it. Stripped here rather than in the
+ * form so the API and any future caller are covered by the same rule
+ * ({@see ControlAccountRoles::excludesTax()}).
  */
 final class SaveCheque
 {
@@ -72,22 +79,27 @@ final class SaveCheque
 
             $cheque->lines()->delete();
 
+            // Hoisted: a two-query lookup, not one per line.
+            $controlAccounts = ControlAccountRoles::map();
+
             foreach (array_values($data['lines']) as $index => $line) {
                 $amountCents = (int) $line['amount_cents'];
-                $taxCode = isset($line['tax_code_id'])
+                $excludesTax = ControlAccountRoles::excludesTax($controlAccounts, $line['account_id'] ?? null);
+
+                $taxCode = isset($line['tax_code_id']) && ! $excludesTax
                     ? TaxCode::withoutGlobalScopes()->where('company_id', app('current_company')->id)->find($line['tax_code_id'])
                     : null;
 
-                $secondaryTaxCode = isset($line['secondary_tax_code_id'])
+                $secondaryTaxCode = isset($line['secondary_tax_code_id']) && ! $excludesTax
                     ? TaxCode::withoutGlobalScopes()->where('company_id', app('current_company')->id)->find($line['secondary_tax_code_id'])
                     : null;
 
-                $override = $line['tax_override_cents'] ?? null;
+                $override = $excludesTax ? null : ($line['tax_override_cents'] ?? null);
                 $taxCents = $override !== null
                     ? (int) $override
                     : ($taxCode ? $taxCode->taxFor($amountCents) : 0);
 
-                $secondaryOverride = $line['secondary_tax_override_cents'] ?? null;
+                $secondaryOverride = $excludesTax ? null : ($line['secondary_tax_override_cents'] ?? null);
                 $secondaryTaxCents = $secondaryOverride !== null
                     ? (int) $secondaryOverride
                     : ($secondaryTaxCode ? $secondaryTaxCode->taxFor($amountCents) : 0);

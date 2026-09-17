@@ -377,6 +377,18 @@ new #[Title('Cheque')] class extends Component
         }
     }
 
+    /**
+     * Whether a line's account forbids sales tax. True for the AR/AP control
+     * accounts: the balance the line settles already includes the tax its
+     * originating invoice or bill recorded, so taxing it again double-counts it.
+     * Named for the tax rule rather than reusing lineContactRole() at the call
+     * sites, so the recalc and the markup read as what they mean.
+     */
+    public function lineExcludesTax(int $i): bool
+    {
+        return ControlAccountRoles::excludesTax($this->contactRequiringAccounts, $this->lines[$i]['account_id'] ?? null);
+    }
+
     protected function emptyLine(): array
     {
         return [
@@ -421,19 +433,22 @@ new #[Title('Cheque')] class extends Component
             $this->lines[$i]['secondary_tax_code_id'] = $ids[1] ?? null;
         }
 
-        // Picking an account fills a blank tax code from the account's
-        // default — never overwriting one already on the line.
         if (str_ends_with($key, '.account_id')) {
-            if ($value && empty($this->lines[$i]['tax_code_id'])) {
-                $this->lines[$i]['tax_code_id'] = Account::find($value)?->default_tax_code_id;
-            }
-
-            // An AR/AP account needs a customer / vendor; anything else must not
-            // carry one, so a stale pick can't ride along on an expense line.
+            // An AR/AP account needs a customer / vendor and forbids tax; anything
+            // else is the reverse. Resolved before either is touched, so a stale
+            // pick can't ride along: no customer on an expense line, and no tax
+            // code on a receivable.
             if ($this->lineContactRole($i) === null) {
                 $this->resetLineContactState($i);
+
+                // Picking an account fills a blank tax code from the account's
+                // default — never overwriting one already on the line.
+                if ($value && empty($this->lines[$i]['tax_code_id'])) {
+                    $this->lines[$i]['tax_code_id'] = Account::find($value)?->default_tax_code_id;
+                }
             } else {
                 $this->prefillLineContactFromPayee($i);
+                $this->resetLineTaxState($i);
             }
         }
 
@@ -451,6 +466,19 @@ new #[Title('Cheque')] class extends Component
         return (Money::tryFromString((string) ($line['amount'] ?? ''))?->cents ?? 0) !== 0;
     }
 
+    /**
+     * Blank a line's whole tax state. Called when a line's account becomes an
+     * AR/AP control account, the way resetLineContactState() blanks the picker
+     * when it stops being one.
+     */
+    protected function resetLineTaxState(int $i): void
+    {
+        $this->lines[$i]['tax_code_id'] = null;
+        $this->lines[$i]['secondary_tax_code_id'] = null;
+        $this->lines[$i]['tax_code_ids'] = [];
+        $this->lines[$i]['tax_override'] = '';
+    }
+
     protected function recalcLine(int $i): void
     {
         $line = $this->lines[$i];
@@ -459,6 +487,21 @@ new #[Title('Cheque')] class extends Component
             $amount = Money::fromString($line['amount'] === '' ? '0' : $line['amount'])->cents;
         } catch (Throwable) {
             $amount = 0;
+        }
+
+        // A control-account line never carries tax. Enforced here rather than
+        // only on the account change so it also covers hydration: opening a
+        // cheque saved before this rule (loadLinesFrom() recalcs every line)
+        // shows the corrected figures, and saving writes them.
+        if ($this->lineExcludesTax($i)) {
+            $this->resetLineTaxState($i);
+
+            $this->lines[$i]['auto_tax_cents'] = 0;
+            $this->lines[$i]['tax_cents'] = 0;
+            $this->lines[$i]['secondary_tax_cents'] = 0;
+            $this->lines[$i]['total'] = $amount;
+
+            return;
         }
 
         $taxCode = $line['tax_code_id'] ? TaxCode::find($line['tax_code_id']) : null;
@@ -1024,23 +1067,32 @@ new #[Title('Cheque')] class extends Component
                             </td>
                             <td class="block px-2 py-1 lg:table-cell lg:py-2">
                                 <span class="mb-1 block text-xs font-medium text-muted-foreground lg:hidden">{{ __('Tax') }}</span>
-                                @php($selectedTaxIds = $line['tax_code_ids'] ?? [])
-                                <flux:dropdown>
-                                    <flux:button variant="outline" size="sm" icon:trailing="chevron-down" class="w-full justify-between font-normal" data-test="line-tax">
-                                        <span class="truncate">{{ $this->taxCodeOptions->whereIn('id', $selectedTaxIds)->pluck('code')->implode(', ') ?: __('Select tax') }}</span>
-                                    </flux:button>
-                                    <flux:menu>
-                                        <flux:menu.checkbox.group wire:model.live="lines.{{ $i }}.tax_code_ids">
-                                            @foreach ($this->taxCodeOptions as $opt)
-                                                <flux:menu.checkbox value="{{ $opt->id }}" :disabled="count($selectedTaxIds) === 2 && ! in_array($opt->id, $selectedTaxIds)" keep-open>{{ $opt->code }}</flux:menu.checkbox>
-                                            @endforeach
-                                        </flux:menu.checkbox.group>
-                                    </flux:menu>
-                                </flux:dropdown>
-                                <x-amount-input model="lines.{{ $i }}.tax_override" modifiers=".live.debounce.500ms" size="sm"
-                                    class="mt-1 lg:text-right"
-                                    placeholder="{{ number_format($line['auto_tax_cents'] / 100, 2) }}"
-                                    data-test="line-tax-override" />
+                                {{-- A receivable or payable already includes the tax its invoice or
+                                     bill recorded, so the settlement is never taxed again. The cell
+                                     says so rather than leaving an empty space to interpret. --}}
+                                @if ($contactRole !== null)
+                                    <span class="block py-1.5 text-sm text-muted-foreground" data-test="line-tax-excluded">
+                                        {{ $contactRole === 'customer' ? __('Included in the invoice') : __('Included in the bill') }}
+                                    </span>
+                                @else
+                                    @php($selectedTaxIds = $line['tax_code_ids'] ?? [])
+                                    <flux:dropdown>
+                                        <flux:button variant="outline" size="sm" icon:trailing="chevron-down" class="w-full justify-between font-normal" data-test="line-tax">
+                                            <span class="truncate">{{ $this->taxCodeOptions->whereIn('id', $selectedTaxIds)->pluck('code')->implode(', ') ?: __('Select tax') }}</span>
+                                        </flux:button>
+                                        <flux:menu>
+                                            <flux:menu.checkbox.group wire:model.live="lines.{{ $i }}.tax_code_ids">
+                                                @foreach ($this->taxCodeOptions as $opt)
+                                                    <flux:menu.checkbox value="{{ $opt->id }}" :disabled="count($selectedTaxIds) === 2 && ! in_array($opt->id, $selectedTaxIds)" keep-open>{{ $opt->code }}</flux:menu.checkbox>
+                                                @endforeach
+                                            </flux:menu.checkbox.group>
+                                        </flux:menu>
+                                    </flux:dropdown>
+                                    <x-amount-input model="lines.{{ $i }}.tax_override" modifiers=".live.debounce.500ms" size="sm"
+                                        class="mt-1 lg:text-right"
+                                        placeholder="{{ number_format($line['auto_tax_cents'] / 100, 2) }}"
+                                        data-test="line-tax-override" />
+                                @endif
                             </td>
                             @if ($this->tracksClasses)
                                 <td class="block px-2 py-1 lg:table-cell lg:py-2">
