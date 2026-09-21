@@ -12,6 +12,7 @@ use App\Services\Audit\AccountingAuditRecorder;
 use App\Services\Audit\AuditMute;
 use App\Services\Currency\ExchangeRateService;
 use App\Services\Tax\TaxPeriodLockGuard;
+use App\Support\Banking\BankLineMemo;
 use App\Support\Currency;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Auth;
@@ -31,6 +32,7 @@ use RuntimeException;
  */
 class ExpensePoster
 {
+    use Concerns\JoinsLineDescriptions;
     use Concerns\PlugsForeignRounding;
     use Concerns\SplitsLineTax;
 
@@ -168,7 +170,7 @@ class ExpensePoster
         $legs = [];
 
         foreach ($this->expenseByAccount($expense) as $leg) {
-            $legs[] = ['account_id' => $leg['account_id'], 'class_id' => $leg['class_id'], 'location_id' => $leg['location_id'], 'foreign' => $leg['cents'], 'home' => Currency::toHomeCents($leg['cents'], $rate), 'memo' => null];
+            $legs[] = ['account_id' => $leg['account_id'], 'class_id' => $leg['class_id'], 'location_id' => $leg['location_id'], 'foreign' => $leg['cents'], 'home' => Currency::toHomeCents($leg['cents'], $rate), 'memo' => $this->descriptionMemo($leg['descriptions'])];
         }
 
         foreach ($this->recoverableTaxByPayableAccount($expense) as $payableAccountId => $foreignCents) {
@@ -202,7 +204,7 @@ class ExpensePoster
             'account_id' => $expense->payment_account_id,
             'debit_cents' => 0,
             'credit_cents' => $payHome,
-            'memo' => $expense->reference ? 'Expense '.$expense->reference : 'Expense',
+            'memo' => BankLineMemo::forSource($expense),
             'contact_id' => $expense->payee_contact_id,
             'line_order' => $order++,
             ...Currency::lineMemo($currency, $rate, 0, $totalForeign),
@@ -231,7 +233,10 @@ class ExpensePoster
     }
 
     /**
-     * @return list<array{account_id: int, class_id: ?int, location_id: ?int, cents: int}>
+     * One leg per account + dimensions, with the descriptions of the lines folded
+     * into it for the leg's memo.
+     *
+     * @return list<array{account_id: int, class_id: ?int, location_id: ?int, cents: int, descriptions: list<?string>}>
      */
     protected function expenseByAccount(Expense $expense): array
     {
@@ -253,8 +258,10 @@ class ExpensePoster
                 'class_id' => $line->class_id,
                 'location_id' => $line->location_id,
                 'cents' => 0,
+                'descriptions' => [],
             ];
             $grouped[$key]['cents'] += $cents;
+            $grouped[$key]['descriptions'][] = $line->description;
         }
 
         return array_values($grouped);

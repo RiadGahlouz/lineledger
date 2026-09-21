@@ -2,17 +2,25 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\AccountSubtype;
+use App\Enums\ChequeStatus;
 use App\Enums\NormalBalance;
 use App\Models\Account;
+use App\Models\Bill;
 use App\Models\Company;
+use App\Models\Invoice;
 use App\Notifications\LedgerIntegrityAlert;
+use App\Services\Audit\AuditMute;
+use App\Services\Posting\BillPaymentPoster;
+use App\Services\Posting\ReceiptPoster;
+use App\Support\Accounting\ControlAccountRoles;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 
 /**
- * Nightly proof that the books still reconcile. Three checks per company:
+ * Nightly proof that the books still reconcile. Five checks per company:
  *
  *   1. Audit hash chain — delegated to {@see VerifyAccountingAuditCommand}.
  *   2. Double-entry balance — every posted journal nets to zero across the GL,
@@ -20,6 +28,10 @@ use Illuminate\Support\Facades\Notification;
  *   3. Balance-cache drift — accounts.balance_cents is a denormalized hint that
  *      reports ignore, but drift signals a posting bug, so we recompute each
  *      account from its posted lines and compare. --fix heals the cache.
+ *   4. Document paid-cache drift — invoices/bills amount_paid_cents against the
+ *      live applications of posted receipts and payments. --fix reposts.
+ *   5. Tax on a control-account cheque line — report-only; see
+ *      {@see checkControlAccountTax()}.
  *
  * On any failure it logs, emails ops (unless --no-alert), and exits non-zero so
  * a scheduler/CI run surfaces it. The accumulating run history is also exactly
@@ -29,10 +41,10 @@ class CheckLedgerIntegrity extends Command
 {
     protected $signature = 'integrity:check
         {company? : Company ID; checks all companies when omitted}
-        {--fix : Recompute drifted account-balance caches in place}
+        {--fix : Recompute drifted account-balance and document paid caches in place}
         {--no-alert : Report failures without emailing}';
 
-    protected $description = 'Verify ledger integrity: audit hash chain, double-entry balance, and account-balance cache.';
+    protected $description = 'Verify ledger integrity: audit hash chain, double-entry balance, account-balance cache, invoice/bill paid caches, and tax on control-account cheque lines.';
 
     /**
      * Length of the rolling full-verification cycle, in days.
@@ -130,6 +142,56 @@ class CheckLedgerIntegrity extends Command
         // 3. Account-balance cache drift.
         $issues = array_merge($issues, $this->checkBalanceCache($companyId));
 
+        // 4. Document paid-cache drift: invoices.amount_paid_cents and
+        //    bills.amount_paid_cents are denormalized from the live
+        //    applications of posted receipts / payments. A stale value shows a
+        //    document as paid (or owing) that the ledger says otherwise.
+        $issues = array_merge($issues, $this->checkPaidCaches($companyId));
+
+        // 5. Sales tax on a cheque line coded to an AR/AP control account.
+        $issues = array_merge($issues, $this->checkControlAccountTax($companyId));
+
+        return $issues;
+    }
+
+    /**
+     * Cheques posted with sales tax on a line coded to an AR/AP control account.
+     *
+     * The balance such a line settles already includes the tax its originating
+     * invoice or bill recorded, so taxing it again double-counts: a
+     * non-recoverable code is grossed up into the AR/AP leg itself (moving the
+     * contact's sub-ledger by more than the payment), and a recoverable one adds
+     * an input-tax-credit leg for a credit that was never incurred. The write
+     * path now strips it ({@see ControlAccountRoles::excludesTax()}); this finds
+     * what was posted before it did.
+     *
+     * Report-only, with no --fix: the repair is to open the cheque and save it,
+     * which reposts through SaveCheque and drops the tax deliberately, under the
+     * audit chain. A void needs nothing — its entry is already reversed.
+     *
+     * @return list<string>
+     */
+    protected function checkControlAccountTax(int $companyId): array
+    {
+        $cheques = DB::table('cheque_lines as cl')
+            ->join('cheques as c', 'c.id', '=', 'cl.cheque_id')
+            ->join('accounts as a', 'a.id', '=', 'cl.account_id')
+            ->where('c.company_id', $companyId)
+            ->whereNull('c.deleted_at')
+            ->whereNotNull('c.journal_entry_id')
+            ->where('c.status', '!=', ChequeStatus::Void->value)
+            ->whereIn('a.subtype', [AccountSubtype::AccountsReceivable->value, AccountSubtype::AccountsPayable->value])
+            ->where(fn ($q) => $q->where('cl.tax_cents', '!=', 0)->orWhere('cl.secondary_tax_cents', '!=', 0))
+            ->distinct()
+            ->orderBy('c.id')
+            ->pluck('c.cheque_no', 'c.id');
+
+        $issues = [];
+
+        foreach ($cheques as $id => $chequeNo) {
+            $issues[] = "Cheque {$chequeNo} (id {$id}) carries sales tax on an Accounts Receivable / Payable line, which double-counts the tax already in that balance. Open it and save it to strip the tax and repost.";
+        }
+
         return $issues;
     }
 
@@ -201,6 +263,97 @@ class CheckLedgerIntegrity extends Command
                 $account->name,
                 (int) $account->balance_cents,
                 $expected,
+            );
+        }
+
+        return $issues;
+    }
+
+    /**
+     * Invoices and bills whose cached amount_paid_cents disagrees with the sum
+     * of their live applications — one grouped query per document type, like
+     * check 3. --fix recomputes them through the posters (which also refresh
+     * the document status and the contact's AR/AP), silently like check 3 but
+     * listed in the output. Applications that EXCEED a document's total are a
+     * separate issue the cache repair cannot resolve, so they are always
+     * reported.
+     *
+     * @return list<string>
+     */
+    protected function checkPaidCaches(int $companyId): array
+    {
+        $issues = [];
+        $fix = (bool) $this->option('fix');
+        $receipts = app(ReceiptPoster::class);
+        $payments = app(BillPaymentPoster::class);
+
+        foreach ($receipts->driftedInvoiceRows($companyId) as $row) {
+            $expected = min((int) $row->live_cents, (int) $row->total_cents);
+
+            if ($fix) {
+                $invoice = Invoice::withoutGlobalScopes()->find((int) $row->id);
+                if ($invoice) {
+                    AuditMute::silence(fn () => $receipts->recomputeInvoicePaidFromAllReceipts($invoice));
+                    $this->line(sprintf('  Repaired invoice %s (#%d): paid cache %d -> %d.', $row->invoice_no, $row->id, (int) $row->amount_paid_cents, $expected));
+                    Log::info('Repaired invoice paid cache.', ['company_id' => $companyId, 'invoice_id' => (int) $row->id, 'from' => (int) $row->amount_paid_cents, 'to' => $expected]);
+                }
+
+                continue;
+            }
+
+            $issues[] = sprintf(
+                'Invoice %s (#%d) paid cache is %d but its live receipt applications sum to %d (capped at the %d total: %d).',
+                $row->invoice_no,
+                $row->id,
+                (int) $row->amount_paid_cents,
+                (int) $row->live_cents,
+                (int) $row->total_cents,
+                $expected,
+            );
+        }
+
+        foreach ($receipts->overAppliedInvoiceRows($companyId) as $row) {
+            $issues[] = sprintf(
+                'Invoice %s (#%d) has %d applied from receipts against a total of %d — an over-application that only editing the receipts can resolve.',
+                $row->invoice_no,
+                $row->id,
+                (int) $row->live_cents,
+                (int) $row->total_cents,
+            );
+        }
+
+        foreach ($payments->driftedBillRows($companyId) as $row) {
+            $expected = min((int) $row->live_cents, (int) $row->total_cents);
+
+            if ($fix) {
+                $bill = Bill::withoutGlobalScopes()->find((int) $row->id);
+                if ($bill) {
+                    AuditMute::silence(fn () => $payments->recomputeBillPaidFromAllPayments($bill));
+                    $this->line(sprintf('  Repaired bill %s (#%d): paid cache %d -> %d.', $row->bill_no, $row->id, (int) $row->amount_paid_cents, $expected));
+                    Log::info('Repaired bill paid cache.', ['company_id' => $companyId, 'bill_id' => (int) $row->id, 'from' => (int) $row->amount_paid_cents, 'to' => $expected]);
+                }
+
+                continue;
+            }
+
+            $issues[] = sprintf(
+                'Bill %s (#%d) paid cache is %d but its live payment applications sum to %d (capped at the %d total: %d).',
+                $row->bill_no,
+                $row->id,
+                (int) $row->amount_paid_cents,
+                (int) $row->live_cents,
+                (int) $row->total_cents,
+                $expected,
+            );
+        }
+
+        foreach ($payments->overAppliedBillRows($companyId) as $row) {
+            $issues[] = sprintf(
+                'Bill %s (#%d) has %d applied from payments against a total of %d — an over-application that only editing the payments can resolve.',
+                $row->bill_no,
+                $row->id,
+                (int) $row->live_cents,
+                (int) $row->total_cents,
             );
         }
 

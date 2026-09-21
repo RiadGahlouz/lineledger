@@ -8,6 +8,7 @@ use App\Http\Controllers\ChartOfAccountsTemplateController;
 use App\Http\Controllers\Cheques\PrintChequeController as ChequesPrintChequeController;
 use App\Http\Controllers\CompanyBackupDownloadController;
 use App\Http\Controllers\Customers\CustomerStatementController;
+use App\Http\Controllers\EditLockController;
 use App\Http\Controllers\Estimates\PrintEstimateController;
 use App\Http\Controllers\Health\ExchangeRateHealthController;
 use App\Http\Controllers\HomeController;
@@ -32,11 +33,13 @@ use App\Http\Controllers\Security\CspReportController;
 use App\Http\Controllers\Settings\ListImportTemplateController;
 use App\Http\Controllers\Stripe\ConnectController;
 use App\Http\Controllers\Stripe\WebhookController as StripeWebhookController;
+use App\Http\Controllers\SwitchCompanyController;
 use App\Http\Controllers\VerificationDownloadController;
 use App\Http\Middleware\EnforceTwoFactor;
 use App\Http\Middleware\EnsureCompanyMembership;
 use App\Http\Middleware\EnsureSectionAccess;
 use App\Http\Middleware\EnsureSectionEnabled;
+use App\Http\Middleware\EnsureSupportEnabled;
 use App\Models\Attachment;
 use App\Models\Company;
 use App\Models\DocumentFolder;
@@ -86,10 +89,29 @@ Route::middleware(['auth'])->group(function () {
     Route::livewire('legal/accept', 'pages::legal.accept')->name('legal.accept');
 });
 
+// Edit-lock leases (resources/js/edit-lock.js): the open edit page's heartbeat
+// and its release beacon. Deliberately outside the {company} prefix —
+// EnsureCompanyMembership rewrites the user's current company on every request,
+// so a background heartbeat there would flip the current company of the user's
+// other tabs. A lease is addressed by its secret token and must be the user's own.
+Route::middleware(['auth', 'throttle:120,1'])->prefix('edit-locks')->name('edit-locks.')->group(function () {
+    Route::post('heartbeat', [EditLockController::class, 'heartbeat'])->name('heartbeat');
+    Route::post('release', [EditLockController::class, 'release'])->name('release');
+});
+
+// The company switcher posts here from a target="_blank" form, opening the chosen
+// company in a new tab. Outside the {company} prefix: the controller checks
+// membership itself, and the user's tab-of-origin arrives as `from`.
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::post('companies/{company}/switch', SwitchCompanyController::class)->name('companies.switch');
+});
+
 // In-app support tickets. Platform-level (not tenant-scoped), so they live here
 // beside settings rather than under the {company} prefix; per-page mount() guards
-// enforce that a user only sees their own tickets.
-Route::middleware(['auth', 'verified'])->group(function () {
+// enforce that a user only sees their own tickets. EnsureSupportEnabled 404s the
+// pair on a deployment that handles support elsewhere (SUPPORT_ENABLED=false),
+// leaving the route names resolvable for anything still linking to a ticket.
+Route::middleware(['auth', 'verified', EnsureSupportEnabled::class])->group(function () {
     Route::livewire('support', 'pages::support.index')->name('support.index');
     Route::livewire('support/{ticket}', 'pages::support.show')->name('support.show');
 });
@@ -341,6 +363,7 @@ Route::prefix('{company}')
         Route::livewire('reports/sales-by-customer-detail', 'pages::reports.sales-by-customer-detail')->name('reports.sales-by-customer-detail');
         Route::livewire('reports/sales-by-item', 'pages::reports.sales-by-item')->name('reports.sales-by-item');
         Route::livewire('reports/sales-by-rep', 'pages::reports.sales-by-rep')->name('reports.sales-by-rep');
+        Route::livewire('reports/sales-by-rep/{rep}', 'pages::reports.sales-by-rep-detail')->name('reports.sales-by-rep-detail');
         Route::livewire('reports/purchases-by-vendor', 'pages::reports.purchases-by-vendor')->name('reports.purchases-by-vendor');
         Route::livewire('reports/purchases-by-item', 'pages::reports.purchases-by-item')->name('reports.purchases-by-item');
         Route::livewire('reports/open-purchase-orders', 'pages::reports.open-purchase-orders')->name('reports.open-purchase-orders');
@@ -385,6 +408,7 @@ Route::prefix('{company}')
         Route::livewire('reports/unattributed-ar', 'pages::reports.unattributed-ar')->name('reports.unattributed-ar');
         Route::livewire('reports/ap-aging', 'pages::reports.ap-aging')->name('reports.ap-aging');
         Route::livewire('reports/open-bills', 'pages::reports.open-bills')->name('reports.open-bills');
+        Route::livewire('reports/vendor-activity', 'pages::reports.vendor-activity')->name('reports.vendor-activity');
         Route::livewire('reports/1099-summary', 'pages::reports.form-1099')->name('reports.form-1099');
         Route::livewire('reports/contact-statement/{contact}', 'pages::reports.contact-statement')->name('reports.contact-statement');
         Route::livewire('reports/audit-log', 'pages::reports.audit-log')

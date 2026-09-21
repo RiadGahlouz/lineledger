@@ -6,6 +6,7 @@ use App\Enums\AccountType;
 use App\Enums\InvoiceStatus;
 use App\Enums\ItemType;
 use App\Exceptions\Posting\PeriodLockedException;
+use App\Livewire\Concerns\GuardsEditLockedForm;
 use App\Models\Account;
 use App\Models\Classification;
 use App\Models\Company;
@@ -29,6 +30,7 @@ use App\Support\Quantity;
 use App\Support\Tax\LineTaxBreakdown;
 use Carbon\CarbonImmutable;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -36,6 +38,8 @@ use Livewire\Component;
 
 new #[Title('Invoice')] class extends Component
 {
+    use GuardsEditLockedForm;
+
     public Company $company;
 
     public ?Invoice $invoice = null;
@@ -113,6 +117,11 @@ new #[Title('Invoice')] class extends Component
      * @var array<string, bool>
      */
     public array $fieldVisibility = [];
+
+    protected function editLockRecord(): ?Model
+    {
+        return $this->invoice;
+    }
 
     public function mount(Company $company, ?Invoice $invoice = null): void
     {
@@ -265,6 +274,16 @@ new #[Title('Invoice')] class extends Component
 
     /**
      * Triggered when an item is picked — prefill the line.
+     *
+     * The account always follows the item. The description and unit price are
+     * filled only when the line has none yet, and the tax codes follow the item
+     * only while the line has no price yet: invoices posted over the API by
+     * external systems arrive with their own wording, prices and tax treatment
+     * (often tax as its own lines and no tax code at all), and re-tagging such
+     * a line with a catalog item afterwards must not rewrite what was billed
+     * or start taxing it. A fresh line — no price typed yet — still gets the
+     * item's defaults, so item pricing and default taxes keep working when an
+     * invoice is built by hand.
      */
     public function updatedLines(mixed $value, ?string $key = null): void
     {
@@ -321,15 +340,39 @@ new #[Title('Invoice')] class extends Component
             }
 
             if ($item) {
+                $hadPrice = $this->lineHasPrice($i);
+
                 $this->lines[$i]['account_id'] = $item->income_account_id;
-                $this->lines[$i]['description'] = $item->description ?? $item->name;
-                $this->lines[$i]['unit_price'] = Money::fromCents((int) $item->default_price_cents)->toDecimalString();
-                $this->lines[$i]['tax_code_id'] = $item->default_tax_code_id;
-                $this->lines[$i]['secondary_tax_code_id'] = $item->default_secondary_tax_code_id;
+                if (trim((string) ($this->lines[$i]['description'] ?? '')) === '') {
+                    $this->lines[$i]['description'] = $item->description ?? $item->name;
+                }
+                if (! $hadPrice) {
+                    $this->lines[$i]['unit_price'] = Money::fromCents((int) $item->default_price_cents)->toDecimalString();
+                    $this->lines[$i]['tax_code_id'] = $item->default_tax_code_id;
+                    $this->lines[$i]['secondary_tax_code_id'] = $item->default_secondary_tax_code_id;
+                }
             }
         }
 
         $this->recalcLine($i);
+    }
+
+    /**
+     * Whether the line already carries a non-zero unit price. Parses the way
+     * recalcLine() does, so a blank or unparseable value counts as "no price".
+     */
+    protected function lineHasPrice(int $i): bool
+    {
+        $price = (string) ($this->lines[$i]['unit_price'] ?? '');
+        if ($price === '') {
+            return false;
+        }
+
+        try {
+            return Money::fromString($price)->cents !== 0;
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -1068,6 +1111,9 @@ new #[Title('Invoice')] class extends Component
 }; ?>
 
 <section class="w-full">
+    @if ($editLockBlocked) <x-edit-lock.blocked :lock="$this->editLockView" /> @else
+    <x-edit-lock.status :lock="$this->editLockView" />
+
     <div class="mb-6 flex items-start justify-between gap-4">
         <flux:heading size="xl" level="1">{{ $invoice?->id ? __('Edit invoice') : __('New invoice') }}</flux:heading>
 
@@ -1489,4 +1535,5 @@ new #[Title('Invoice')] class extends Component
             </div>
         </form>
     </flux:modal>
+    @endif
 </section>

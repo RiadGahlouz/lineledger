@@ -198,6 +198,10 @@ new #[Title('Transactions')] class extends Component {
         $sourceFqcn = $this->sourceTypeMap()[$this->sourceType] ?? null;
 
         return JournalLine::query()
+            // journal_lines has no company_id and JournalLine no CompanyScope, so
+            // confine to this company's entries — otherwise every tenant's lines
+            // in the range match, and a foreign ?account=/?contact= id reads them.
+            ->whereHas('journalEntry', fn ($jq) => $jq->where('journal_entries.company_id', $this->company->id))
             ->where('journal_lines.is_posted', true)
             ->whereBetween('journal_lines.entry_date', [$this->startDate, $this->endDate])
             ->when($this->accountId !== null, fn ($q) => $q->where('journal_lines.account_id', $this->accountId))
@@ -312,7 +316,7 @@ new #[Title('Transactions')] class extends Component {
 
         foreach ($this->filteredQuery()->lazy() as $line) {
             $row = [
-                'date' => (string) $line->entry_date,
+                'date' => $line->entry_date?->toDateString(),
                 'entry_no' => $line->journalEntry?->entry_no,
                 'account' => trim(($line->account?->code ?? '').' — '.($line->account?->name ?? ''), ' —'),
                 'name' => $line->contact?->display_name,
@@ -492,7 +496,7 @@ new #[Title('Transactions')] class extends Component {
                     @endif
 
                     <tr data-test="txn-row">
-                        <td class="px-4 py-2 whitespace-nowrap">{{ $line->entry_date }}</td>
+                        <td class="px-4 py-2 whitespace-nowrap">{{ $line->entry_date?->toDateString() }}</td>
                         @if ($this->columnVisible('entry_no'))
                             <td class="px-4 py-2 font-mono">{{ $line->journalEntry?->entry_no }}</td>
                         @endif

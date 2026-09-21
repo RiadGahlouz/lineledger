@@ -5,6 +5,7 @@ use App\Enums\AccountSubtype;
 use App\Enums\AccountType;
 use App\Enums\DepositStatus;
 use App\Exceptions\Posting\PeriodLockedException;
+use App\Livewire\Concerns\GuardsEditLockedForm;
 use App\Models\Account;
 use App\Models\Classification;
 use App\Models\Company;
@@ -16,8 +17,14 @@ use App\Models\SalesReceipt;
 use App\Rules\MoneyString;
 use App\Services\Posting\DepositPoster;
 use App\Services\Posting\DocumentNumberGenerator;
+use App\Services\Reporting\CsvExporter;
+use App\Services\Reporting\PdfExporter;
+use App\Services\Reporting\XlsxExporter;
+use App\Support\Banking\LastBankAccount;
 use App\Support\Money;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
@@ -27,6 +34,8 @@ use Livewire\Component;
 
 new #[Title('Make deposit')] class extends Component
 {
+    use GuardsEditLockedForm;
+
     public Company $company;
 
     public ?Deposit $deposit = null;
@@ -45,9 +54,27 @@ new #[Title('Make deposit')] class extends Component
     /**
      * Receipts available for deposit: keyed by receipt_id → include
      *
-     * @var array<int, array{receipt_id: int, date: string, contact: string, amount: int, included: bool}>
+     * @var array<int, array{source: string, receipt_id: int, date: string, receipt_no: string, contact: string, payment_method: ?string, reference: ?string, amount: int, included: bool}>
      */
     public array $availableReceipts = [];
+
+    /** Column the receipt picker is sorted by; one of self::SORT_FIELDS. */
+    public string $sortField = 'date';
+
+    public string $sortDir = 'asc';
+
+    /**
+     * $availableReceipts keys in display order. Sorting reorders THIS, never the
+     * bound array: each checkbox's wire:model carries its row's array index, and
+     * that expression is compiled once when the row's DOM node is created — so
+     * re-indexing the array under a moved row would point its checkbox at a
+     * different receipt.
+     *
+     * @var array<int, int>
+     */
+    public array $receiptOrder = [];
+
+    private const SORT_FIELDS = ['included', 'date', 'receipt_no', 'contact', 'payment_method', 'reference', 'amount'];
 
     /**
      * "Other" deposit lines (e.g. owner contribution, refund)
@@ -55,6 +82,11 @@ new #[Title('Make deposit')] class extends Component
      * @var array<int, array{account_id: ?int, contact_id: ?int, description: string, amount: string}>
      */
     public array $otherLines = [];
+
+    protected function editLockRecord(): ?Model
+    {
+        return $this->deposit;
+    }
 
     public function mount(Company $company, ?Deposit $deposit = null): void
     {
@@ -176,7 +208,7 @@ new #[Title('Make deposit')] class extends Component
                 'payment_method' => $r->paymentMethod?->name,
                 'reference' => $r->reference,
                 'amount' => (int) $r->amount_cents,
-                'included' => $this->deposit ? in_array($r->id, $currentCustomerIds, true) : true,
+                'included' => $this->deposit !== null && in_array($r->id, $currentCustomerIds, true),
             ]));
 
         // --- Pay-now Sales Receipts ---
@@ -200,10 +232,202 @@ new #[Title('Make deposit')] class extends Component
                 'payment_method' => $r->paymentMethod?->name,
                 'reference' => $r->reference,
                 'amount' => (int) $r->total_cents,
-                'included' => $this->deposit ? in_array($r->id, $currentSalesIds, true) : true,
+                'included' => $this->deposit !== null && in_array($r->id, $currentSalesIds, true),
             ]));
 
-        $this->availableReceipts = $rows->sortBy('date')->values()->all();
+        $this->availableReceipts = $rows->values()->all();
+
+        $this->applySort();
+    }
+
+    /**
+     * Re-order the picker by the clicked column, flipping direction when the
+     * same column is clicked twice. The rows are sorted in place (rather than in
+     * the view) so each row's `included` binding keeps pointing at its own row.
+     */
+    public function sortBy(string $field): void
+    {
+        if (! in_array($field, self::SORT_FIELDS, true)) {
+            return;
+        }
+
+        if ($this->sortField === $field) {
+            $this->sortDir = $this->sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+            $this->sortField = $field;
+            $this->sortDir = 'asc';
+        }
+
+        $this->applySort();
+    }
+
+    protected function applySort(): void
+    {
+        $this->receiptOrder = collect($this->availableReceipts)
+            ->sortBy(fn (array $r) => match ($this->sortField) {
+                'included' => (int) $r['included'],
+                'amount' => (int) $r['amount'],
+                'receipt_no' => mb_strtolower((string) ($r['receipt_no'] ?? '')),
+                'contact' => mb_strtolower((string) ($r['contact'] ?? '')),
+                'payment_method' => mb_strtolower((string) ($r['payment_method'] ?? '')),
+                'reference' => mb_strtolower((string) ($r['reference'] ?? '')),
+                default => (string) $r['date'],
+            }, SORT_REGULAR, $this->sortDir === 'desc')
+            ->keys()
+            ->map(fn ($i) => (int) $i)
+            ->all();
+    }
+
+    /** True only when there is at least one receipt and every one is ticked. */
+    #[Computed]
+    public function allReceiptsSelected(): bool
+    {
+        return $this->availableReceipts !== []
+            && collect($this->availableReceipts)->every(fn (array $r) => (bool) $r['included']);
+    }
+
+    /** Header checkbox: tick every receipt, or clear them all when all are ticked. */
+    public function toggleAllReceipts(): void
+    {
+        $include = ! $this->allReceiptsSelected;
+
+        foreach (array_keys($this->availableReceipts) as $i) {
+            $this->availableReceipts[$i]['included'] = $include;
+        }
+
+        unset($this->allReceiptsSelected);
+    }
+
+    /**
+     * The picker's rows in the order they are displayed. Every export reads
+     * this, so a downloaded copy matches the sort the operator is looking at
+     * — and carries the tick state, which is what makes it a deposit slip.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    protected function orderedReceipts(): Collection
+    {
+        $rows = [];
+
+        foreach ($this->receiptOrder as $i) {
+            if (isset($this->availableReceipts[$i])) {
+                $rows[] = $this->availableReceipts[$i];
+            }
+        }
+
+        return collect($rows);
+    }
+
+    /** Export filename, dated by the deposit being prepared. */
+    protected function exportFilename(string $extension): string
+    {
+        $date = $this->deposit_date !== '' ? $this->deposit_date : $this->company->currentDateTime()->toDateString();
+
+        return 'undeposited-receipts-'.$date.'.'.$extension;
+    }
+
+    /** @return array<int, string> */
+    protected function exportHeaders(): array
+    {
+        return [__('Selected'), __('Date'), __('Receipt #'), __('From'), __('Payment type'), __('Ref'), __('Amount')];
+    }
+
+    /** Bank and selection summary printed under the title on XLSX/PDF. */
+    protected function exportMetaLines(): array
+    {
+        $rows = $this->orderedReceipts();
+        $selected = $rows->where('included', true);
+        $bank = $this->bankAccounts->firstWhere('id', (int) $this->bank_account_id);
+
+        return array_values(array_filter([
+            $bank ? __('Deposit to: :account', ['account' => $bank->code.' — '.$bank->name]) : null,
+            __(':selected of :total selected · :amount', [
+                'selected' => $selected->count(),
+                'total' => $rows->count(),
+                'amount' => number_format((int) $selected->sum('amount') / 100, 2),
+            ]),
+        ]));
+    }
+
+    public function exportCsv()
+    {
+        $rows = $this->orderedReceipts();
+
+        return app(CsvExporter::class)->stream(
+            $this->exportFilename('csv'),
+            $this->exportHeaders(),
+            $rows->map(fn (array $r) => [
+                $r['included'] ? __('Yes') : __('No'),
+                $r['date'],
+                $r['receipt_no'],
+                $r['contact'],
+                $r['payment_method'] ?? '',
+                $r['reference'] ?? '',
+                CsvExporter::cents((int) $r['amount']),
+            ])->push(['', '', '', '', '', __('TOTAL'), CsvExporter::cents((int) $rows->sum('amount'))]),
+        );
+    }
+
+    public function exportXlsx()
+    {
+        $rows = $this->orderedReceipts();
+
+        return app(XlsxExporter::class)->listTable(
+            $this->exportFilename('xlsx'),
+            'Undeposited receipts',
+            __('Undeposited receipts'),
+            $this->company,
+            $this->exportMetaLines(),
+            $this->exportHeaders(),
+            $rows->map(fn (array $r) => [
+                $r['included'] ? __('Yes') : __('No'),
+                $r['date'],
+                $r['receipt_no'],
+                $r['contact'],
+                $r['payment_method'] ?? '',
+                $r['reference'] ?? '',
+                (int) $r['amount'],
+            ])->all(),
+            moneyColumns: [7],
+            columnWidths: [1 => 10, 2 => 12, 3 => 18, 4 => 32, 5 => 18, 6 => 16, 7 => 14],
+            totals: ['', '', '', '', '', __('TOTAL'), (int) $rows->sum('amount')],
+        );
+    }
+
+    public function exportPdf()
+    {
+        $rows = $this->orderedReceipts();
+
+        return app(PdfExporter::class)->download('pdf.reports.list-table', [
+            'company' => $this->company,
+            'title' => __('Undeposited receipts'),
+            'period' => __('as of :date', ['date' => $this->deposit_date]),
+            'metaLines' => $this->exportMetaLines(),
+            'headers' => [
+                ['label' => __('Selected')],
+                ['label' => __('Date')],
+                ['label' => __('Receipt #')],
+                ['label' => __('From')],
+                ['label' => __('Payment type')],
+                ['label' => __('Ref')],
+                ['label' => __('Amount'), 'num' => true],
+            ],
+            'rows' => $rows->map(fn (array $r) => [
+                ['value' => $r['included'] ? __('Yes') : __('No')],
+                ['value' => $r['date']],
+                ['value' => $r['receipt_no']],
+                ['value' => $r['contact']],
+                ['value' => $r['payment_method'] ?? '—'],
+                ['value' => $r['reference'] ?? ''],
+                ['value' => number_format((int) $r['amount'] / 100, 2), 'num' => true],
+            ])->all(),
+            'totals' => [
+                ['value' => ''], ['value' => ''], ['value' => ''], ['value' => ''], ['value' => ''],
+                ['value' => __('TOTAL')],
+                ['value' => number_format((int) $rows->sum('amount') / 100, 2), 'num' => true],
+            ],
+            'emptyMessage' => __('No undeposited receipts.'),
+        ], $this->exportFilename('pdf'));
     }
 
     public function addOtherLine(): void
@@ -370,14 +594,17 @@ new #[Title('Make deposit')] class extends Component
     }
 
     /**
-     * Default "Deposit to" for a new deposit: reuse the bank account from the
-     * most recent deposit so the last-used account is remembered between
-     * deposits. Falls back to the lowest-code active bank account when there is
-     * no prior deposit, or its account is no longer an active bank.
+     * Default "Deposit to" for a new deposit: the account this operator last
+     * worked in anywhere in Banking, else the bank account from the most recent
+     * deposit, else the lowest-code active bank account.
      */
     protected function defaultBankAccountId(): ?int
     {
         $activeBankIds = $this->bankAccounts->pluck('id');
+
+        if ($remembered = LastBankAccount::recall($this->company, $activeBankIds)) {
+            return $remembered;
+        }
 
         $lastUsed = Deposit::query()
             ->whereNotNull('bank_account_id')
@@ -385,6 +612,11 @@ new #[Title('Make deposit')] class extends Component
             ->value('bank_account_id');
 
         return $activeBankIds->contains($lastUsed) ? (int) $lastUsed : $activeBankIds->first();
+    }
+
+    public function updatedBankAccountId(): void
+    {
+        LastBankAccount::remember($this->company, $this->bank_account_id);
     }
 
     #[Computed]
@@ -456,6 +688,9 @@ new #[Title('Make deposit')] class extends Component
 }; ?>
 
 <section class="w-full">
+    @if ($editLockBlocked) <x-edit-lock.blocked :lock="$this->editLockView" /> @else
+    <x-edit-lock.status :lock="$this->editLockView" />
+
     <flux:heading size="xl" level="1" class="mb-6">{{ $deposit ? __('Edit deposit') : __('Make deposit') }}</flux:heading>
 
     <form wire:submit="save" class="space-y-6">
@@ -474,7 +709,23 @@ new #[Title('Make deposit')] class extends Component
         <flux:input wire:model="memo" :label="__('Memo')" />
 
         <div>
-            <flux:heading class="mb-2">{{ __('Undeposited receipts') }}</flux:heading>
+            <div class="mb-2 flex items-center justify-between gap-2">
+                <flux:heading>{{ __('Undeposited receipts') }}</flux:heading>
+
+                @if (! empty($availableReceipts))
+                    <flux:dropdown align="end">
+                        <flux:button size="sm" variant="filled" icon="arrow-down-tray" icon:trailing="chevron-down" data-test="export-receipts-menu">
+                            {{ __('Export') }}
+                        </flux:button>
+                        <flux:menu>
+                            <flux:menu.item icon="document" wire:click="exportPdf" data-test="export-receipts-pdf">{{ __('PDF') }}</flux:menu.item>
+                            <flux:menu.item icon="document-text" wire:click="exportCsv" data-test="export-receipts-csv">{{ __('CSV') }}</flux:menu.item>
+                            <flux:menu.item icon="table-cells" wire:click="exportXlsx" data-test="export-receipts-xlsx">{{ __('Excel') }}</flux:menu.item>
+                        </flux:menu>
+                    </flux:dropdown>
+                @endif
+            </div>
+
             @if (empty($availableReceipts))
                 <flux:text class="py-4 text-center text-muted-foreground">{{ __('No undeposited receipts.') }}</flux:text>
             @else
@@ -482,21 +733,38 @@ new #[Title('Make deposit')] class extends Component
                     <table class="w-full text-sm">
                         <thead class="bg-muted">
                             <tr>
-                                <th class="px-3 py-2"></th>
-                                <th class="px-3 py-2 text-left">{{ __('Date') }}</th>
-                                <th class="px-3 py-2 text-left">{{ __('Receipt #') }}</th>
-                                <th class="px-3 py-2 text-left">{{ __('From') }}</th>
-                                <th class="px-3 py-2 text-left">{{ __('Payment type') }}</th>
-                                <th class="px-3 py-2 text-left">{{ __('Ref') }}</th>
-                                <th class="px-3 py-2 text-right">{{ __('Amount') }}</th>
+                                <th class="px-3 py-2">
+                                    <flux:checkbox
+                                        wire:click="toggleAllReceipts"
+                                        :checked="$this->allReceiptsSelected"
+                                        :aria-label="__('Select all receipts')"
+                                        data-test="select-all-receipts"
+                                    />
+                                </th>
+                                <th class="px-3 py-2 text-left"><x-sort-header field="date" :current-field="$sortField" :current-dir="$sortDir" :label="__('Date')" /></th>
+                                <th class="px-3 py-2 text-left"><x-sort-header field="receipt_no" :current-field="$sortField" :current-dir="$sortDir" :label="__('Receipt #')" /></th>
+                                <th class="px-3 py-2 text-left"><x-sort-header field="contact" :current-field="$sortField" :current-dir="$sortDir" :label="__('From')" /></th>
+                                <th class="px-3 py-2 text-left"><x-sort-header field="payment_method" :current-field="$sortField" :current-dir="$sortDir" :label="__('Payment type')" /></th>
+                                <th class="px-3 py-2 text-left"><x-sort-header field="reference" :current-field="$sortField" :current-dir="$sortDir" :label="__('Ref')" /></th>
+                                <th class="px-3 py-2 text-right"><x-sort-header field="amount" :current-field="$sortField" :current-dir="$sortDir" :label="__('Amount')" align="right" /></th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-border">
-                            @foreach ($availableReceipts as $i => $r)
+                            @foreach ($receiptOrder as $i)
+                                @php($r = $availableReceipts[$i] ?? null)
+                                @continue($r === null)
                                 <tr wire:key="receipt-{{ $r['source'] }}-{{ $r['receipt_id'] }}" data-test="receipt-pick-row">
                                     <td class="px-3 py-2"><flux:checkbox wire:model.live="availableReceipts.{{ $i }}.included" data-test="receipt-pick-check" /></td>
                                     <td class="px-3 py-2 whitespace-nowrap">{{ $r['date'] }}</td>
-                                    <td class="px-3 py-2 font-mono">{{ $r['receipt_no'] }}</td>
+                                    <td class="px-3 py-2 font-mono">
+                                        <a
+                                            href="{{ route($r['source'] === 'sales' ? 'sales-receipts.edit' : 'receipts.edit', ['company' => $company->slug, 'receipt' => $r['receipt_id']]) }}"
+                                            target="_blank"
+                                            class="underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                                            title="{{ __('Edit this receipt in a new tab') }}"
+                                            data-test="receipt-pick-link"
+                                        >{{ $r['receipt_no'] }}</a>
+                                    </td>
                                     <td class="px-3 py-2">{{ $r['contact'] }}</td>
                                     <td class="px-3 py-2 text-muted-foreground" data-test="receipt-pick-method">{{ $r['payment_method'] ?? '—' }}</td>
                                     <td class="px-3 py-2 text-muted-foreground">{{ $r['reference'] }}</td>
@@ -595,4 +863,5 @@ new #[Title('Make deposit')] class extends Component
             @endif
         </div>
     </form>
+    @endif
 </section>

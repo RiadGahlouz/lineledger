@@ -2,15 +2,20 @@
 
 use App\Actions\Sales\FulfillSalesOrder;
 use App\Enums\SalesOrderStatus;
+use App\Livewire\Attributes\GuardsEditLock;
+use App\Livewire\Concerns\ShowsEditLock;
 use App\Models\Company;
 use App\Models\SalesOrder;
 use App\Support\Tax\LineTaxBreakdown;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Model;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Sales Order')] class extends Component {
+    use ShowsEditLock;
+
     public Company $company;
 
     public SalesOrder $salesOrder;
@@ -23,6 +28,11 @@ new #[Title('Sales Order')] class extends Component {
      * @var array<int, string>
      */
     public array $fulfillQty = [];
+
+    protected function editLockRecord(): ?Model
+    {
+        return $this->salesOrder;
+    }
 
     public function mount(Company $company, SalesOrder $salesOrder): void
     {
@@ -65,6 +75,7 @@ new #[Title('Sales Order')] class extends Component {
         $this->fulfillQty = [];
     }
 
+    #[GuardsEditLock]
     public function fulfill(FulfillSalesOrder $action): void
     {
         $quantities = array_filter(
@@ -84,6 +95,7 @@ new #[Title('Sales Order')] class extends Component {
         $this->redirectRoute('invoices.edit', ['company' => $this->company->slug, 'invoice' => $invoice->id], navigate: true);
     }
 
+    #[GuardsEditLock]
     public function cancelOrder(): void
     {
         $status = $this->salesOrder->effectiveStatus();
@@ -100,6 +112,8 @@ new #[Title('Sales Order')] class extends Component {
 }; ?>
 
 <section class="w-full">
+    <x-edit-lock.banner :lock="$this->editLockBanner" />
+
     <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
             <flux:heading size="xl" level="1">{{ __('Sales Order') }} {{ $salesOrder->order_no }}</flux:heading>

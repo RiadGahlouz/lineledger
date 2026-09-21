@@ -144,6 +144,17 @@ class BankReconciliationService
                     ->update(['bank_reconciliation_id' => $rec->id]);
             }
 
+            // A service-charge or interest line is stamped with this
+            // reconciliation when it is posted. One that ended up unticked was
+            // not counted in the balance, so it must not stay cleared.
+            $this->unstamp($rec, JournalLine::query()
+                ->where('bank_reconciliation_id', $rec->id)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->diff($ids)
+                ->values()
+                ->all());
+
             $rec->forceFill([
                 'status' => BankReconciliationStatus::Completed->value,
                 'completed_at' => now(),
@@ -156,11 +167,13 @@ class BankReconciliationService
 
     /**
      * Edit the starting figures of an in-progress reconciliation in place,
-     * preserving the lines the user has already marked. Service-charge / interest
-     * changes are applied by reversing any existing aux entry and re-posting the
-     * new one, so the GL and the rec's marked set stay consistent. Reversals of
-     * these aux entries are hidden from the reconcile screen (see the reconcile
-     * view's availableLines() query) so editing never leaves phantom lines behind.
+     * preserving the lines the user has already marked. A *changed* service
+     * charge or interest amount is applied by reversing the existing aux entry
+     * and re-posting the new one, so the GL and the rec's marked set stay
+     * consistent; an *unchanged* one is left strictly alone — see
+     * {@see self::adjustmentUnchanged()}. Both halves of a replaced aux entry
+     * stay visible on the reconcile screen and net to zero, because they are
+     * real postings on the bank and the register shows them.
      *
      * @param  array{cents:int,date:CarbonInterface,account_id:int}|null  $serviceCharge
      * @param  array{cents:int,date:CarbonInterface,account_id:int}|null  $interestEarned
@@ -439,12 +452,27 @@ class BankReconciliationService
      */
     protected function resetServiceCharge(BankReconciliation $rec, Account $account, ?array $sc, array &$marked): void
     {
+        // Saving the edit form without touching the service charge must not
+        // touch the ledger: reversing a live entry and re-posting an identical
+        // one churns the GL, the audit trail and the rec's marked set for no
+        // change at all.
+        if ($this->adjustmentUnchanged(
+            $rec->serviceChargeEntry()->first(),
+            $sc,
+            (int) $rec->service_charge_cents,
+            $rec->service_charge_date,
+            $rec->service_charge_account_id,
+        )) {
+            return;
+        }
+
         if ($rec->service_charge_entry_id) {
             $existing = $rec->serviceChargeEntry()->first();
 
             if ($existing) {
-                $bankLineIds = $existing->lines()->where('account_id', $account->id)->pluck('id')->all();
-                $marked = array_values(array_diff($marked, array_map('intval', $bankLineIds)));
+                $bankLineIds = array_map('intval', $existing->lines()->where('account_id', $account->id)->pluck('id')->all());
+                $marked = array_values(array_diff($marked, $bankLineIds));
+                $this->unstamp($rec, $bankLineIds);
 
                 if (! $existing->isVoided()) {
                     $this->journalPoster->void($existing, null, "Edit reconciliation #{$rec->id} — service charge replaced");
@@ -482,12 +510,23 @@ class BankReconciliationService
      */
     protected function resetInterest(BankReconciliation $rec, Account $account, ?array $int, array &$marked): void
     {
+        if ($this->adjustmentUnchanged(
+            $rec->interestEarnedEntry()->first(),
+            $int,
+            (int) $rec->interest_earned_cents,
+            $rec->interest_earned_date,
+            $rec->interest_earned_account_id,
+        )) {
+            return;
+        }
+
         if ($rec->interest_earned_entry_id) {
             $existing = $rec->interestEarnedEntry()->first();
 
             if ($existing) {
-                $bankLineIds = $existing->lines()->where('account_id', $account->id)->pluck('id')->all();
-                $marked = array_values(array_diff($marked, array_map('intval', $bankLineIds)));
+                $bankLineIds = array_map('intval', $existing->lines()->where('account_id', $account->id)->pluck('id')->all());
+                $marked = array_values(array_diff($marked, $bankLineIds));
+                $this->unstamp($rec, $bankLineIds);
 
                 if (! $existing->isVoided()) {
                     $this->journalPoster->void($existing, null, "Edit reconciliation #{$rec->id} — interest replaced");
@@ -514,6 +553,60 @@ class BankReconciliationService
 
             $marked[] = (int) $bankLineId;
         }
+    }
+
+    /**
+     * Take this reconciliation's cleared stamp back off lines it did not
+     * count — a replaced service charge or interest entry, or one left
+     * unticked — so the register's cleared balance and the reconciliation's
+     * detail agree with what was actually reconciled.
+     *
+     * @param  list<int>  $lineIds
+     */
+    protected function unstamp(BankReconciliation $rec, array $lineIds): void
+    {
+        if ($lineIds === []) {
+            return;
+        }
+
+        JournalLine::query()
+            ->whereIn('id', $lineIds)
+            ->where('bank_reconciliation_id', $rec->id)
+            ->update(['cleared_at' => null, 'bank_reconciliation_id' => null]);
+    }
+
+    /**
+     * True when the edited form asks for exactly what the reconciliation
+     * already carries, so the adjustment can be left alone.
+     *
+     * Two cases count as unchanged: nothing recorded and nothing asked for, or
+     * a still-live entry whose amount, date and account all match the form. A
+     * recorded adjustment whose entry has since been voided elsewhere is NOT
+     * unchanged — it has to be re-posted.
+     *
+     * @param  array{cents?:int,date?:CarbonInterface,account_id?:int}|null  $incoming
+     */
+    protected function adjustmentUnchanged(
+        ?JournalEntry $entry,
+        ?array $incoming,
+        int $recordedCents,
+        mixed $recordedDate,
+        ?int $recordedAccountId,
+    ): bool {
+        $cents = (int) ($incoming['cents'] ?? 0);
+
+        if ($entry === null) {
+            return $cents <= 0;
+        }
+
+        if ($entry->isVoided() || $cents <= 0) {
+            return false;
+        }
+
+        return $cents === $recordedCents
+            && (int) ($incoming['account_id'] ?? 0) === (int) $recordedAccountId
+            && $recordedDate !== null
+            && Carbon::parse($incoming['date'])->toDateString() === Carbon::parse($recordedDate)->toDateString();
     }
 
     /**

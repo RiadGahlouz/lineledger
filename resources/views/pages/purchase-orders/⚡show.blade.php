@@ -2,15 +2,20 @@
 
 use App\Actions\Purchasing\FulfillPurchaseOrder;
 use App\Enums\PurchaseOrderStatus;
+use App\Livewire\Attributes\GuardsEditLock;
+use App\Livewire\Concerns\ShowsEditLock;
 use App\Models\Company;
 use App\Models\PurchaseOrder;
 use App\Support\Tax\LineTaxBreakdown;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Model;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Purchase Order')] class extends Component {
+    use ShowsEditLock;
+
     public Company $company;
 
     public PurchaseOrder $purchaseOrder;
@@ -23,6 +28,11 @@ new #[Title('Purchase Order')] class extends Component {
      * @var array<int, string>
      */
     public array $receiveQty = [];
+
+    protected function editLockRecord(): ?Model
+    {
+        return $this->purchaseOrder;
+    }
 
     public function mount(Company $company, PurchaseOrder $purchaseOrder): void
     {
@@ -65,6 +75,7 @@ new #[Title('Purchase Order')] class extends Component {
         $this->receiveQty = [];
     }
 
+    #[GuardsEditLock]
     public function receive(FulfillPurchaseOrder $action): void
     {
         $quantities = array_filter(
@@ -84,6 +95,7 @@ new #[Title('Purchase Order')] class extends Component {
         $this->redirectRoute('bills.edit', ['company' => $this->company->slug, 'bill' => $bill->id], navigate: true);
     }
 
+    #[GuardsEditLock]
     public function cancelOrder(): void
     {
         $status = $this->purchaseOrder->effectiveStatus();
@@ -100,6 +112,8 @@ new #[Title('Purchase Order')] class extends Component {
 }; ?>
 
 <section class="w-full">
+    <x-edit-lock.banner :lock="$this->editLockBanner" />
+
     <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
             <flux:heading size="xl" level="1">{{ __('Purchase Order') }} {{ $purchaseOrder->po_no }}</flux:heading>

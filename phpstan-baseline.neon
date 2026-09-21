@@ -217,24 +217,6 @@ parameters:
 			path: app/Concerns/HasReportNotes.php
 
 		-
-			message: '#^Trait App\\Livewire\\Concerns\\ManagesStatementLineContacts is used zero times and is not analysed\.$#'
-			identifier: trait.unused
-			count: 1
-			path: app/Livewire/Concerns/ManagesStatementLineContacts.php
-
-		-
-			message: '#^Trait App\\Livewire\\Concerns\\ManagesPayeeCombo is used zero times and is not analysed\.$#'
-			identifier: trait.unused
-			count: 1
-			path: app/Livewire/Concerns/ManagesPayeeCombo.php
-
-		-
-			message: '#^Trait App\\Livewire\\Concerns\\ManagesStatementLineTax is used zero times and is not analysed\.$#'
-			identifier: trait.unused
-			count: 1
-			path: app/Livewire/Concerns/ManagesStatementLineTax.php
-
-		-
 			message: '#^Trait App\\Concerns\\HasReportNumberFormat is used zero times and is not analysed\.$#'
 			identifier: trait.unused
 			count: 1
@@ -691,18 +673,6 @@ parameters:
 			path: app/Http/Controllers/Stripe/WebhookController.php
 
 		-
-			message: '#^Strict comparison using \=\=\= between ''vendor'' and ''customer'' will always evaluate to false\.$#'
-			identifier: identical.alwaysFalse
-			count: 2
-			path: app/Http/Requests/Api/V1/JournalEntryLineRules.php
-
-		-
-			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\AccountSubtype\:\:AccountsReceivable will always evaluate to false\.$#'
-			identifier: identical.alwaysFalse
-			count: 1
-			path: app/Http/Requests/Api/V1/JournalEntryLineRules.php
-
-		-
 			message: '#^Using nullsafe property access "\?\-\>payment_type" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
 			count: 2
@@ -889,6 +859,18 @@ parameters:
 			path: app/Listeners/Security/SecurityLogListener.php
 
 		-
+			message: '#^Trait App\\Livewire\\Concerns\\GuardsEditLockedForm is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: app/Livewire/Concerns/GuardsEditLockedForm.php
+
+		-
+			message: '#^Trait App\\Livewire\\Concerns\\HoldsEditLock is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: app/Livewire/Concerns/HoldsEditLock.php
+
+		-
 			message: '#^Trait App\\Livewire\\Concerns\\ImportsCsvList is used zero times and is not analysed\.$#'
 			identifier: trait.unused
 			count: 1
@@ -899,6 +881,36 @@ parameters:
 			identifier: trait.unused
 			count: 1
 			path: app/Livewire/Concerns/InteractsWithOpeningBalances.php
+
+		-
+			message: '#^Trait App\\Livewire\\Concerns\\ManagesLineContacts is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: app/Livewire/Concerns/ManagesLineContacts.php
+
+		-
+			message: '#^Trait App\\Livewire\\Concerns\\ManagesPayeeCombo is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: app/Livewire/Concerns/ManagesPayeeCombo.php
+
+		-
+			message: '#^Trait App\\Livewire\\Concerns\\ManagesStatementLineContacts is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: app/Livewire/Concerns/ManagesStatementLineContacts.php
+
+		-
+			message: '#^Trait App\\Livewire\\Concerns\\ManagesStatementLineTax is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: app/Livewire/Concerns/ManagesStatementLineTax.php
+
+		-
+			message: '#^Trait App\\Livewire\\Concerns\\ShowsEditLock is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: app/Livewire/Concerns/ShowsEditLock.php
 
 		-
 			message: '#^Cannot call method label\(\) on string\.$#'
@@ -937,31 +949,31 @@ parameters:
 			path: app/Mcp/Tools/FinancialSummaryTool.php
 
 		-
-			message: '#^Offset ''closing'' on array\{opening\: int, lines\: array\<int, array\{date\: string, doc_no\: string, type\: string, memo\: string, debit\: int, credit\: int, running\: int, route_name\: string, \.\.\.\}\>, period_debit\: int, period_credit\: int, closing\: int\} on left side of \?\? always exists and is not nullable\.$#'
+			message: '#^Offset ''closing'' on array\{opening\: int, lines\: array\<int, array\{date\: string, doc_no\: string, type\: string, memo\: string, sales_rep\: string, debit\: int, credit\: int, running\: int, \.\.\.\}\>, period_debit\: int, period_credit\: int, closing\: int\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: app/Mcp/Tools/FindContactTool.php
 
 		-
-			message: '#^Offset ''credit'' on array\{date\: string, doc_no\: string, type\: string, memo\: string, debit\: int, credit\: int, running\: int, route_name\: string, \.\.\.\} on left side of \?\? always exists and is not nullable\.$#'
+			message: '#^Offset ''credit'' on array\{date\: string, doc_no\: string, type\: string, memo\: string, sales_rep\: string, debit\: int, credit\: int, running\: int, \.\.\.\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: app/Mcp/Tools/FindContactTool.php
 
 		-
-			message: '#^Offset ''debit'' on array\{date\: string, doc_no\: string, type\: string, memo\: string, debit\: int, credit\: int, running\: int, route_name\: string, \.\.\.\} on left side of \?\? always exists and is not nullable\.$#'
+			message: '#^Offset ''debit'' on array\{date\: string, doc_no\: string, type\: string, memo\: string, sales_rep\: string, debit\: int, credit\: int, running\: int, \.\.\.\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: app/Mcp/Tools/FindContactTool.php
 
 		-
-			message: '#^Offset ''lines'' on array\{opening\: int, lines\: array\<int, array\{date\: string, doc_no\: string, type\: string, memo\: string, debit\: int, credit\: int, running\: int, route_name\: string, \.\.\.\}\>, period_debit\: int, period_credit\: int, closing\: int\} on left side of \?\? always exists and is not nullable\.$#'
+			message: '#^Offset ''lines'' on array\{opening\: int, lines\: array\<int, array\{date\: string, doc_no\: string, type\: string, memo\: string, sales_rep\: string, debit\: int, credit\: int, running\: int, \.\.\.\}\>, period_debit\: int, period_credit\: int, closing\: int\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: app/Mcp/Tools/FindContactTool.php
 
 		-
-			message: '#^Offset ''opening'' on array\{opening\: int, lines\: array\<int, array\{date\: string, doc_no\: string, type\: string, memo\: string, debit\: int, credit\: int, running\: int, route_name\: string, \.\.\.\}\>, period_debit\: int, period_credit\: int, closing\: int\} on left side of \?\? always exists and is not nullable\.$#'
+			message: '#^Offset ''opening'' on array\{opening\: int, lines\: array\<int, array\{date\: string, doc_no\: string, type\: string, memo\: string, sales_rep\: string, debit\: int, credit\: int, running\: int, \.\.\.\}\>, period_debit\: int, period_credit\: int, closing\: int\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: app/Mcp/Tools/FindContactTool.php
@@ -981,7 +993,7 @@ parameters:
 		-
 			message: '#^Using nullsafe property access "\?\-\>display_name" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
-			count: 1
+			count: 2
 			path: app/Mcp/Tools/ListInvoicesTool.php
 
 		-
@@ -2341,12 +2353,6 @@ parameters:
 			path: app/Services/Posting/DepositPoster.php
 
 		-
-			message: '#^Offset ''contact_id'' does not exist on array\{account_id\: int, class_id\?\: int\|null, location_id\?\: int\|null, foreign\: int, home\: int, memo\: string\|null\}\.$#'
-			identifier: offsetAccess.notFound
-			count: 1
-			path: app/Services/Posting/DepositPoster.php
-
-		-
 			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\DepositStatus\:\:Void will always evaluate to false\.$#'
 			identifier: identical.alwaysFalse
 			count: 2
@@ -2869,18 +2875,6 @@ parameters:
 			path: app/Services/Reporting/GifiStatementBuilder.php
 
 		-
-			message: '#^Method App\\Services\\Reporting\\InventoryReportBuilder\:\:stockStatus\(\) should return Illuminate\\Support\\Collection\<int, array\{item_id\: int, name\: string, sku\: string\|null, qty_on_hand\: float, reorder_point\: float\|null, unit_cost_cents\: int, below_reorder\: bool\}\> but returns Illuminate\\Support\\Collection\<int, array\{item_id\: int, name\: string, sku\: string\|null, qty_on_hand\: float, reorder_point\: float\|null, unit_cost_cents\: int, below_reorder\: bool\}\>\.$#'
-			identifier: return.type
-			count: 1
-			path: app/Services/Reporting/InventoryReportBuilder.php
-
-		-
-			message: '#^Method App\\Services\\Reporting\\InventoryReportBuilder\:\:valuationSummary\(\) should return array\{rows\: Illuminate\\Support\\Collection\<int, array\{item_id\: int, name\: string, sku\: string\|null, qty\: float, avg_cost_cents\: int, value_cents\: int\}\>, total_value_cents\: int\} but returns array\{rows\: Illuminate\\Support\\Collection\<int, array\{item_id\: int, name\: string, sku\: string\|null, qty\: float, avg_cost_cents\: int, value_cents\: int\}\>, total_value_cents\: int\}\.$#'
-			identifier: return.type
-			count: 1
-			path: app/Services/Reporting/InventoryReportBuilder.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\Bill\:\:\$currency_code\.$#'
 			identifier: property.notFound
 			count: 1
@@ -3079,19 +3073,7 @@ parameters:
 			path: app/Services/Reporting/SalesPurchaseReportBuilder.php
 
 		-
-			message: '#^Method App\\Services\\Reporting\\SalesPurchaseReportBuilder\:\:mergeSigned\(\) should return Illuminate\\Support\\Collection\<int, array\{key\: int\|null, label\: string, qty\: float, amount_cents\: int\}\> but returns Illuminate\\Support\\Collection\<int, array\{key\: int\|null, label\: string, qty\: float, amount_cents\: int\}\>\.$#'
-			identifier: return.type
-			count: 1
-			path: app/Services/Reporting/SalesPurchaseReportBuilder.php
-
-		-
-			message: '#^Method App\\Services\\Reporting\\SalesPurchaseReportBuilder\:\:purchasesByDimension\(\) should return Illuminate\\Support\\Collection\<int, array\{key\: int\|null, label\: string, qty\: float, amount_cents\: int\}\> but returns Illuminate\\Support\\Collection\<int, array\{key\: int\|null, label\: string, qty\: float, amount_cents\: int\}\>\.$#'
-			identifier: return.type
-			count: 1
-			path: app/Services/Reporting/SalesPurchaseReportBuilder.php
-
-		-
-			message: '#^Method App\\Services\\Reporting\\SalesPurchaseReportBuilder\:\:salesByDimension\(\) should return Illuminate\\Support\\Collection\<int, array\{key\: int\|null, label\: string, qty\: float, amount_cents\: int\}\> but returns Illuminate\\Support\\Collection\<int, array\{key\: int\|null, label\: string, qty\: float, amount_cents\: int\}\>\.$#'
+			message: '#^Method App\\Services\\Reporting\\SalesPurchaseReportBuilder\:\:sumAggregates\(\) should return Illuminate\\Support\\Collection\<int\|string, object\{group_key\: int\|null, amount\: int, qty\: float\}\> but returns Illuminate\\Support\\Collection\<int\|string, object\{group_key\: int\|null, amount\: int, qty\: float\}&stdClass\>\.$#'
 			identifier: return.type
 			count: 1
 			path: app/Services/Reporting/SalesPurchaseReportBuilder.php
@@ -3103,33 +3085,9 @@ parameters:
 			path: app/Services/Reporting/SalesPurchaseReportBuilder.php
 
 		-
-			message: '#^Method App\\Services\\Reporting\\SalesPurchaseReportBuilder\:\:sumAggregates\(\) should return Illuminate\\Support\\Collection\<int\|string, object\{group_key\: int\|null, amount\: int, qty\: float\}\> but returns Illuminate\\Support\\Collection\<int\|string, object\{group_key\: int\|null, amount\: int, qty\: float\}&stdClass\>\.$#'
-			identifier: return.type
-			count: 1
-			path: app/Services/Reporting/SalesPurchaseReportBuilder.php
-
-		-
-			message: '#^Parameter \#1 \$a of method App\\Services\\Reporting\\SalesPurchaseReportBuilder\:\:sumAggregates\(\) expects Illuminate\\Support\\Collection\<int\|string, object\{group_key\: int\|null, amount\: int, qty\: float\}\>, Illuminate\\Support\\Collection\<int\|string, object\{group_key\: int\|null, amount\: int, qty\: float\}\> given\.$#'
-			identifier: argument.type
-			count: 2
-			path: app/Services/Reporting/SalesPurchaseReportBuilder.php
-
-		-
-			message: '#^Parameter \#2 \$b of method App\\Services\\Reporting\\SalesPurchaseReportBuilder\:\:sumAggregates\(\) expects Illuminate\\Support\\Collection\<int\|string, object\{group_key\: int\|null, amount\: int, qty\: float\}\>, Illuminate\\Support\\Collection\<int\|string, object\{group_key\: int\|null, amount\: int, qty\: float\}\> given\.$#'
-			identifier: argument.type
-			count: 2
-			path: app/Services/Reporting/SalesPurchaseReportBuilder.php
-
-		-
 			message: '#^Parameter \#1 \$plus of method App\\Services\\Reporting\\SalesPurchaseReportBuilder\:\:mergeSigned\(\) expects Illuminate\\Support\\Collection\<int\|string, object\>, Illuminate\\Support\\Collection\<int\|string, object\{group_key\: int\|null, amount\: int, qty\: float\}\> given\.$#'
 			identifier: argument.type
 			count: 2
-			path: app/Services/Reporting/SalesPurchaseReportBuilder.php
-
-		-
-			message: '#^Parameter \#1 \$rows of method App\\Services\\Reporting\\SalesPurchaseReportBuilder\:\:withLabels\(\) expects Illuminate\\Support\\Collection\<int, array\{key\: int\|null, qty\: float, amount_cents\: int\}\>, Illuminate\\Support\\Collection\<int, array\{key\: int\|null, qty\: float, amount_cents\: int\}\> given\.$#'
-			identifier: argument.type
-			count: 1
 			path: app/Services/Reporting/SalesPurchaseReportBuilder.php
 
 		-
@@ -3169,7 +3127,7 @@ parameters:
 			path: app/Services/Reporting/XlsxExporter.php
 
 		-
-			message: '#^Offset ''memo'' on array\{date\: string, doc_no\: string, type\: string, memo\: string, debit\: int, credit\: int, running\: int\} on left side of \?\? always exists and is not nullable\.$#'
+			message: '#^Offset ''memo'' on array\{date\: string, doc_no\: string, type\: string, memo\: string, sales_rep\?\: string, debit\: int, credit\: int, running\: int\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: app/Services/Reporting/XlsxExporter.php
@@ -3341,6 +3299,12 @@ parameters:
 			identifier: deadCode.unreachable
 			count: 2
 			path: app/Services/Tax/TaxReturnFiler.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between string and App\\Enums\\TaxReturnPaymentDirection\:\:Outgoing will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Support/Banking/BankLineMemo.php
 
 		-
 			message: '#^Parameter \#2 \$specs of method App\\Support\\Defaults\\ChartTemplateBuilder\:\:upsertAccounts\(\) expects array\<string, array\{string, App\\Enums\\AccountSubtype\}\>, array\{2500\: array\{''Deferred /…'', App\\Enums\\AccountSubtype\:\:CurrentLiability\}, 2510\: array\{''Deferred Membership…'', App\\Enums\\AccountSubtype\:\:CurrentLiability\}, 3100\: array\{''Unrestricted Net…'', App\\Enums\\AccountSubtype\:\:UnrestrictedNetAssets\}, 3200\: array\{''Restricted Net…'', App\\Enums\\AccountSubtype\:\:RestrictedNetAssets\}, 3300\?\: array\{''Endowment Net Assets'', App\\Enums\\AccountSubtype\:\:EndowmentNetAssets\}\} given\.$#'

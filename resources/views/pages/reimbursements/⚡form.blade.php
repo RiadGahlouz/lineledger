@@ -4,6 +4,7 @@ use App\Enums\AccountType;
 use App\Enums\BillStatus;
 use App\Enums\BillType;
 use App\Exceptions\Posting\PeriodLockedException;
+use App\Livewire\Concerns\GuardsEditLockedForm;
 use App\Models\Account;
 use App\Models\Bill;
 use App\Models\Company;
@@ -18,12 +19,15 @@ use App\Support\Money;
 use App\Support\Quantity;
 use App\Support\Tax\LineTaxBreakdown;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Reimbursement')] class extends Component {
+    use GuardsEditLockedForm;
+
     public Company $company;
 
     public ?Bill $bill = null;
@@ -46,6 +50,11 @@ new #[Title('Reimbursement')] class extends Component {
      * }>
      */
     public array $lines = [];
+
+    protected function editLockRecord(): ?Model
+    {
+        return $this->bill;
+    }
 
     public function mount(Company $company, ?Bill $bill = null): void
     {
@@ -222,6 +231,7 @@ new #[Title('Reimbursement')] class extends Component {
             'memo' => ['nullable', 'string'],
             'lines' => ['array', 'min:1'],
             'lines.*.account_id' => ['required', 'integer', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
+            'lines.*.description' => ['nullable', 'string'],
             'lines.*.quantity' => ['required', 'numeric', 'min:0'],
             'lines.*.unit_price' => ['required', 'string', new MoneyString],
             'lines.*.tax_code_id' => ['nullable', 'integer', Rule::exists('tax_codes', 'id')->where('company_id', $companyId)],
@@ -317,6 +327,9 @@ new #[Title('Reimbursement')] class extends Component {
 }; ?>
 
 <section class="w-full">
+    @if ($editLockBlocked) <x-edit-lock.blocked :lock="$this->editLockView" /> @else
+    <x-edit-lock.status :lock="$this->editLockView" />
+
     <flux:heading size="xl" level="1" class="mb-6">{{ $bill?->id ? __('Edit reimbursement') : __('New reimbursement') }}</flux:heading>
 
     <form wire:submit="post" class="space-y-6">
@@ -479,4 +492,5 @@ new #[Title('Reimbursement')] class extends Component {
             </div>
         </div>
     </form>
+    @endif
 </section>

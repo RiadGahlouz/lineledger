@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\ResolvesCompanyArgument;
 use App\Models\Company;
 use App\Services\Payroll\TimeOffAccrualService;
 use Carbon\CarbonImmutable;
@@ -15,6 +16,8 @@ use Illuminate\Console\Command;
  */
 class AccrueTimeOff extends Command
 {
+    use ResolvesCompanyArgument;
+
     protected $signature = 'payroll:accrue-time-off
         {company? : Company ID or slug; all companies when omitted}
         {--date= : Run as of this date (Y-m-d) instead of today}';
@@ -25,9 +28,11 @@ class AccrueTimeOff extends Command
     {
         $arg = $this->argument('company');
 
+        // Live companies only: Company's one global scope is soft-deletion, so
+        // enumerating without scopes also accrued time off for deleted tenants.
         $companies = $arg !== null
-            ? Company::query()->withoutGlobalScopes()->where('id', $arg)->orWhere('slug', $arg)->get()
-            : Company::query()->withoutGlobalScopes()->orderBy('id')->get();
+            ? $this->whereCompanyArgument(Company::query(), $arg)->get()
+            : Company::query()->orderBy('id')->get();
 
         if ($companies->isEmpty()) {
             $this->error('No matching company.');

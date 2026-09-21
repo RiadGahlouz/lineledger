@@ -2,14 +2,18 @@
 
 use App\Enums\AccountSubtype;
 use App\Enums\ChequeStatus;
+use App\Livewire\Attributes\GuardsEditLock;
+use App\Livewire\Concerns\ShowsEditLock;
 use App\Models\Attachment;
 use App\Models\Cheque;
 use App\Models\Company;
 use App\Services\AttachmentService;
 use App\Services\Posting\ChequePoster;
+use App\Support\Contacts\AddressLines;
 use App\Support\Contacts\ContactLinkResolver;
 use App\Support\Tax\LineTaxBreakdown;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -17,6 +21,7 @@ use Livewire\Component;
 use Livewire\WithFileUploads;
 
 new #[Title('Cheque')] class extends Component {
+    use ShowsEditLock;
     use WithFileUploads;
 
     public Company $company;
@@ -26,10 +31,15 @@ new #[Title('Cheque')] class extends Component {
     /** @var array<int, mixed> */
     public array $newAttachments = [];
 
+    protected function editLockRecord(): ?Model
+    {
+        return $this->cheque;
+    }
+
     public function mount(Company $company, Cheque $cheque): void
     {
         $this->company = $company;
-        $this->cheque = $cheque->load('lines.account', 'lines.taxCode', 'lines.secondaryTaxCode', 'bankAccount', 'payee', 'journalEntry');
+        $this->cheque = $cheque->load('lines.account', 'lines.contact', 'lines.taxCode', 'lines.secondaryTaxCode', 'bankAccount', 'payee', 'journalEntry');
     }
 
     public function uploadAttachments(AttachmentService $service): void
@@ -63,6 +73,30 @@ new #[Title('Cheque')] class extends Component {
     }
 
     /**
+     * The cheque's own address snapshot, falling back to the payee's record for
+     * cheques written before the snapshot existed — the same rule the printed
+     * cheque follows.
+     *
+     * @return list<string>
+     */
+    #[Computed]
+    public function addressLines(): array
+    {
+        $snapshot = [
+            'line1' => $this->cheque->payee_line1,
+            'line2' => $this->cheque->payee_line2,
+            'city' => $this->cheque->payee_city,
+            'region' => $this->cheque->payee_region,
+            'postal_code' => $this->cheque->payee_postal_code,
+            'country' => $this->cheque->payee_country,
+        ];
+
+        return AddressLines::isEmpty($snapshot)
+            ? AddressLines::forContact($this->cheque->payee, $this->company)
+            : AddressLines::format($snapshot, $this->company);
+    }
+
+    /**
      * The linked payee's home page (statement, employee editor, or all-time
      * transactions), or null for a free-text payee or a viewer who cannot
      * reach that page's section — the name then renders as plain text.
@@ -75,6 +109,7 @@ new #[Title('Cheque')] class extends Component {
             : null;
     }
 
+    #[GuardsEditLock]
     public function void(ChequePoster $poster): void
     {
         try {
@@ -91,6 +126,8 @@ new #[Title('Cheque')] class extends Component {
 }; ?>
 
 <section class="w-full">
+    <x-edit-lock.banner :lock="$this->editLockBanner" />
+
     @php($j = $company->jurisdiction)
     <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -105,6 +142,15 @@ new #[Title('Cheque')] class extends Component {
                 {{ $cheque->cheque_date->toDateString() }} &middot;
                 {{ $cheque->bankAccount->name }}
             </flux:subheading>
+
+            {{-- The address this cheque was mailed to, as printed on it. --}}
+            @if ($this->addressLines !== [])
+                <div class="mt-1 text-sm text-muted-foreground" data-test="cheque-payee-address">
+                    @foreach ($this->addressLines as $line)
+                        <div>{{ $line }}</div>
+                    @endforeach
+                </div>
+            @endif
             <div class="mt-2 hidden items-center gap-2 lg:flex">
                 @switch($cheque->status->value)
                     @case('draft') <flux:badge color="amber">{{ __('Draft') }}</flux:badge> @break
@@ -123,7 +169,7 @@ new #[Title('Cheque')] class extends Component {
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-            @if ($cheque->status === ChequeStatus::Draft)
+            @if ($cheque->status !== ChequeStatus::Void)
                 <flux:button variant="primary" class="!hidden lg:!inline-flex" :href="route('cheques.edit', ['company' => $company->slug, 'cheque' => $cheque->id])" wire:navigate data-test="edit-cheque-button">
                     {{ __('Edit') }}
                 </flux:button>
@@ -132,7 +178,7 @@ new #[Title('Cheque')] class extends Component {
             <flux:dropdown align="end">
                 <flux:button icon:trailing="chevron-down" data-test="cheque-actions-menu">{{ __('Actions') }}</flux:button>
                 <flux:menu>
-                    @if ($cheque->status === ChequeStatus::Draft)
+                    @if ($cheque->status !== ChequeStatus::Void)
                         <flux:menu.item class="lg:hidden" icon="pencil" :href="route('cheques.edit', ['company' => $company->slug, 'cheque' => $cheque->id])" wire:navigate data-test="edit-cheque-menu-item">
                             {{ __('Edit') }}
                         </flux:menu.item>
@@ -142,6 +188,9 @@ new #[Title('Cheque')] class extends Component {
                             {{ $j->chequeLabel('print') }}
                         </flux:menu.item>
                     @endif
+                    <flux:menu.item icon="document-duplicate" :href="route('cheques.create', ['company' => $company->slug, 'from' => $cheque->id])" wire:navigate data-test="duplicate-cheque-button">
+                        {{ __('Duplicate') }}
+                    </flux:menu.item>
                     @if ($cheque->status === ChequeStatus::Posted)
                         <flux:menu.separator />
                         <flux:menu.item icon="x-circle" variant="danger" wire:click="void" wire:confirm="{{ __('Void this :label? A reversing GL entry will be posted.', ['label' => mb_strtolower($j->cheque('singular'))]) }}" data-test="void-cheque-button">
@@ -168,7 +217,14 @@ new #[Title('Cheque')] class extends Component {
             <tbody class="divide-y divide-border">
                 @foreach ($cheque->lines as $line)
                     <tr>
-                        <td class="px-4 py-2">{{ optional($line->account)->code }} — {{ optional($line->account)->name }}</td>
+                        <td class="px-4 py-2">
+                            {{ optional($line->account)->code }} — {{ optional($line->account)->name }}
+                            @if ($line->contact)
+                                {{-- Whose receivable / payable this line moves, which is not
+                                     necessarily who the cheque was made out to. --}}
+                                <span class="mt-0.5 block text-xs text-muted-foreground" data-test="cheque-line-contact">{{ $line->contact->display_name }}</span>
+                            @endif
+                        </td>
                         <td class="px-4 py-2 text-muted-foreground">{{ $line->description }}</td>
                         <td class="px-4 py-2 text-muted-foreground">
                             {{ optional($line->taxCode)->label() }}

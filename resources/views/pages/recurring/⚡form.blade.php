@@ -8,6 +8,7 @@ use App\Enums\RecurrenceEndType;
 use App\Enums\RecurrenceFrequency;
 use App\Enums\RecurringAutomationMode;
 use App\Enums\RecurringDocumentType;
+use App\Livewire\Concerns\GuardsEditLockedForm;
 use App\Models\Account;
 use App\Models\Company;
 use App\Models\Contact;
@@ -21,12 +22,15 @@ use App\Support\Money;
 use App\Support\Quantity;
 use App\Support\Tax\LineTaxBreakdown;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Recurring')] class extends Component {
+    use GuardsEditLockedForm;
+
     public Company $company;
 
     public ?RecurringDocument $recurring = null;
@@ -72,6 +76,11 @@ new #[Title('Recurring')] class extends Component {
      * }>
      */
     public array $lines = [];
+
+    protected function editLockRecord(): ?Model
+    {
+        return $this->recurring;
+    }
 
     public function mount(Company $company, ?RecurringDocument $recurring = null): void
     {
@@ -495,6 +504,9 @@ new #[Title('Recurring')] class extends Component {
 }; ?>
 
 <section class="w-full">
+    @if ($editLockBlocked) <x-edit-lock.blocked :lock="$this->editLockView" /> @else
+    <x-edit-lock.status :lock="$this->editLockView" />
+
     <flux:heading size="xl" level="1" class="mb-6">
         {{ $recurring?->id ? __('Edit recurring schedule') : ($this->isBill() ? __('New recurring bill') : __('New recurring invoice')) }}
     </flux:heading>
@@ -720,4 +732,5 @@ new #[Title('Recurring')] class extends Component {
             </div>
         </div>
     </form>
+    @endif
 </section>

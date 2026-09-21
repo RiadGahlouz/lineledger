@@ -4,6 +4,7 @@ use App\Actions\Purchasing\SaveVendorCredit;
 use App\Enums\AccountType;
 use App\Enums\VendorCreditStatus;
 use App\Exceptions\Posting\PeriodLockedException;
+use App\Livewire\Concerns\GuardsEditLockedForm;
 use App\Models\Account;
 use App\Models\Bill;
 use App\Models\Classification;
@@ -21,6 +22,7 @@ use App\Support\Money;
 use App\Support\Quantity;
 use App\Support\Tax\LineTaxBreakdown;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -28,6 +30,8 @@ use Livewire\Component;
 
 new #[Title('Vendor credit')] class extends Component
 {
+    use GuardsEditLockedForm;
+
     public Company $company;
 
     public ?VendorCredit $vendorCredit = null;
@@ -52,6 +56,11 @@ new #[Title('Vendor credit')] class extends Component
      * @var array<int, array{item_id: ?int, account_id: ?int, description: string, service_date: string, quantity: string, unit_price: string, discount_pct: string, tax_code_id: ?int, secondary_tax_code_id: ?int, class_id: ?int, location_id: ?int, subtotal: int, tax: int, secondary_tax: int, total: int}>
      */
     public array $lines = [];
+
+    protected function editLockRecord(): ?Model
+    {
+        return $this->vendorCredit;
+    }
 
     public function mount(Company $company, ?VendorCredit $vendor_credit = null): void
     {
@@ -533,6 +542,9 @@ new #[Title('Vendor credit')] class extends Component
 }; ?>
 
 <section class="w-full">
+    @if ($editLockBlocked) <x-edit-lock.blocked :lock="$this->editLockView" /> @else
+    <x-edit-lock.status :lock="$this->editLockView" />
+
     <flux:heading size="xl" level="1" class="mb-6">{{ $vendorCredit?->id ? __('Edit vendor credit') : __('New vendor credit') }}</flux:heading>
 
     <form wire:submit="postVendorCredit" class="space-y-6">
@@ -730,4 +742,5 @@ new #[Title('Vendor credit')] class extends Component
             </div>
         </div>
     </form>
+    @endif
 </section>

@@ -5,6 +5,7 @@ use App\Enums\BillPaymentStatus;
 use App\Enums\BillStatus;
 use App\Enums\BillType;
 use App\Exceptions\Posting\PeriodLockedException;
+use App\Livewire\Concerns\GuardsEditLockedForm;
 use App\Models\Account;
 use App\Models\Bill;
 use App\Models\BillPayment;
@@ -16,6 +17,7 @@ use App\Services\Posting\BillPaymentPoster;
 use App\Services\Posting\DocumentNumberGenerator;
 use App\Support\Money;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
@@ -23,6 +25,8 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Pay bills')] class extends Component {
+    use GuardsEditLockedForm;
+
     public Company $company;
 
     public ?BillPayment $payment = null;
@@ -47,6 +51,11 @@ new #[Title('Pay bills')] class extends Component {
      * @var array<int, array{bill_id: int, bill_no: string, due_date: string, balance: int, apply: string}>
      */
     public array $applyTable = [];
+
+    protected function editLockRecord(): ?Model
+    {
+        return $this->payment;
+    }
 
     public function mount(Company $company, ?BillPayment $payment = null): void
     {
@@ -201,22 +210,30 @@ new #[Title('Pay bills')] class extends Component {
         $billType = $this->contactRole === 'employee' ? BillType::Reimbursement : BillType::Vendor;
         $wasPosted = $this->payment?->journal_entry_id !== null;
 
-        $payment = app(SaveBillPayment::class)->handle([
-            'contact_id' => $validated['contact_id'],
-            'payment_type' => $billType->value,
-            'payment_no' => $validated['payment_no'],
-            'payment_date' => $validated['payment_date'],
-            'paid_from_account_id' => $validated['paid_from_account_id'],
-            'payment_method_id' => $validated['payment_method_id'] ?: null,
-            'reference' => $validated['reference'] ?: null,
-            'amount_cents' => $totalCents,
-            'memo' => $validated['memo'] ?: null,
-            'applications' => $applications,
-        ], $this->payment);
-
+        // Save and (re)post as ONE unit of work, as the API does: a repost the
+        // poster refuses must roll the rewritten applications back too.
         try {
-            $wasPosted ? $poster->repost($payment) : $poster->post($payment);
+            $payment = DB::transaction(function () use ($validated, $billType, $totalCents, $applications, $wasPosted, $poster): BillPayment {
+                $payment = app(SaveBillPayment::class)->handle([
+                    'contact_id' => $validated['contact_id'],
+                    'payment_type' => $billType->value,
+                    'payment_no' => $validated['payment_no'],
+                    'payment_date' => $validated['payment_date'],
+                    'paid_from_account_id' => $validated['paid_from_account_id'],
+                    'payment_method_id' => $validated['payment_method_id'] ?: null,
+                    'reference' => $validated['reference'] ?: null,
+                    'amount_cents' => $totalCents,
+                    'memo' => $validated['memo'] ?: null,
+                    'applications' => $applications,
+                ], $this->payment);
+
+                $wasPosted ? $poster->repost($payment) : $poster->post($payment);
+
+                return $payment;
+            });
         } catch (PeriodLockedException|\RuntimeException $e) {
+            // The rolled-back save mutated the bound model in memory; put it back.
+            $this->payment?->refresh();
             $this->addError('applyTable', $e->getMessage());
 
             return;
@@ -343,6 +360,9 @@ new #[Title('Pay bills')] class extends Component {
 }; ?>
 
 <section class="w-full">
+    @if ($editLockBlocked) <x-edit-lock.blocked :lock="$this->editLockView" /> @else
+    <x-edit-lock.status :lock="$this->editLockView" />
+
     <flux:heading size="xl" level="1" class="mb-6">{{ __('Pay bills') }}</flux:heading>
 
     <form wire:submit="save" class="space-y-6">
@@ -465,4 +485,5 @@ new #[Title('Pay bills')] class extends Component {
             <flux:button variant="primary" type="submit" data-test="save-payment-button">{{ __('Save & post') }}</flux:button>
         </div>
     </form>
+    @endif
 </section>

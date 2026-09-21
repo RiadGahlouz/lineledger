@@ -4,6 +4,8 @@ use App\Enums\AccountSubtype;
 use App\Enums\BillPaymentStatus;
 use App\Enums\BillStatus;
 use App\Enums\BillType;
+use App\Livewire\Attributes\GuardsEditLock;
+use App\Livewire\Concerns\ShowsEditLock;
 use App\Models\Attachment;
 use App\Models\Bill;
 use App\Models\Company;
@@ -12,6 +14,7 @@ use App\Services\Posting\BillPoster;
 use App\Services\Posting\BillReconciler;
 use App\Support\Tax\LineTaxBreakdown;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -19,6 +22,7 @@ use Livewire\Component;
 use Livewire\WithFileUploads;
 
 new #[Title('Bill')] class extends Component {
+    use ShowsEditLock;
     use WithFileUploads;
 
     public Company $company;
@@ -27,12 +31,18 @@ new #[Title('Bill')] class extends Component {
 
     public array $newAttachments = [];
 
+    protected function editLockRecord(): ?Model
+    {
+        return $this->bill;
+    }
+
     public function mount(Company $company, Bill $bill): void
     {
         $this->company = $company;
         $this->bill = $bill->load('lines.account', 'lines.taxCode', 'lines.secondaryTaxCode', 'contact', 'journalEntry', 'paymentApplications.payment');
     }
 
+    #[GuardsEditLock]
     public function void(BillPoster $poster): void
     {
         try {
@@ -64,6 +74,7 @@ new #[Title('Bill')] class extends Component {
         return min($this->bill->balanceCents(), $available);
     }
 
+    #[GuardsEditLock]
     public function reconcile(BillReconciler $reconciler): void
     {
         $closed = $reconciler->reconcileBill($this->bill);
@@ -109,6 +120,8 @@ new #[Title('Bill')] class extends Component {
 }; ?>
 
 <section class="w-full">
+    <x-edit-lock.banner :lock="$this->editLockBanner" />
+
     <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
             <flux:heading size="xl" level="1">{{ __('Bill') }} {{ $bill->bill_no }}</flux:heading>

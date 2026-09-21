@@ -1,7 +1,23 @@
 import './charts.js';
 import { evaluateAmountExpression, isAmountExpression, roundHalfUp } from './amount-expression.js';
+import { editLockBlockedPoller, editLockKeeper } from './edit-lock.js';
+import { installEscapeBack } from './escape-back.js';
+import { installDatePicker } from './date-picker.js';
+
+/** Escape goes back to the previous page. See ./escape-back.js. */
+installEscapeBack();
+
+/** Clicking a date field opens its calendar. See ./date-picker.js. */
+installDatePicker();
 
 document.addEventListener('alpine:init', () => {
+    /**
+     * Edit-lock keeper: renews an open edit page's lease on its record and
+     * releases it on leave. See ./edit-lock.js and <x-edit-lock.keeper>.
+     */
+    window.Alpine.data('editLockKeeper', editLockKeeper);
+    window.Alpine.data('editLockBlockedPoller', editLockBlockedPoller);
+
     /**
      * Guest country-switcher banner (books.lineledger.com vs .ca). Mirrors the
      * marketing site's GeoBanner, but the trigger is the REFERRER rather than

@@ -2,6 +2,9 @@
 
 use App\Enums\AccountSubtype;
 use App\Enums\CreditMemoStatus;
+use App\Exceptions\EditLocks\RecordEditLockedException;
+use App\Livewire\Attributes\GuardsEditLock;
+use App\Livewire\Concerns\ShowsEditLock;
 use App\Models\Account;
 use App\Models\Attachment;
 use App\Models\Cheque;
@@ -11,6 +14,7 @@ use App\Models\CustomerReceipt;
 use App\Models\InvoiceSetting;
 use App\Models\PaymentMethod;
 use App\Services\AttachmentService;
+use App\Services\EditLocks\EditLockManager;
 use App\Services\Posting\ChequePoster;
 use App\Services\Posting\CreditMemoPoster;
 use App\Services\Posting\DocumentNumberGenerator;
@@ -18,6 +22,7 @@ use App\Services\Posting\ReceiptPoster;
 use App\Support\Money;
 use App\Support\Tax\LineTaxBreakdown;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -25,6 +30,7 @@ use Livewire\Component;
 use Livewire\WithFileUploads;
 
 new #[Title('Credit memo')] class extends Component {
+    use ShowsEditLock;
     use WithFileUploads;
 
     public Company $company;
@@ -70,6 +76,11 @@ new #[Title('Credit memo')] class extends Component {
     public ?int $refundDepositToAccountId = null;
 
     public string $refundReference = '';
+
+    protected function editLockRecord(): ?Model
+    {
+        return $this->creditMemo;
+    }
 
     public function mount(Company $company, CreditMemo $credit_memo): void
     {
@@ -117,6 +128,7 @@ new #[Title('Credit memo')] class extends Component {
             + (int) ($this->fieldVisibility['tax_column'] ?? true);
     }
 
+    #[GuardsEditLock]
     public function void(CreditMemoPoster $poster): void
     {
         try {
@@ -131,11 +143,12 @@ new #[Title('Credit memo')] class extends Component {
         $this->redirectRoute('credit-memos.index', ['company' => $this->company->slug], navigate: true);
     }
 
+    #[GuardsEditLock]
     public function deleteRefundCheque(int $chequeId, ChequePoster $poster): void
     {
         $cheque = $this->creditMemo->refundCheques()->find($chequeId);
 
-        if (! $cheque) {
+        if (! $cheque || ! $this->refundEditable($cheque)) {
             return;
         }
 
@@ -156,11 +169,12 @@ new #[Title('Credit memo')] class extends Component {
         Flux::toast(variant: 'success', text: __('Refund removed.'));
     }
 
+    #[GuardsEditLock]
     public function deleteRefundReceipt(int $receiptId, ReceiptPoster $poster): void
     {
         $receipt = $this->creditMemo->refundReceipts()->find($receiptId);
 
-        if (! $receipt) {
+        if (! $receipt || ! $this->refundEditable($receipt)) {
             return;
         }
 
@@ -180,6 +194,27 @@ new #[Title('Credit memo')] class extends Component {
     {
         unset($this->refundCheques, $this->refundReceipts, $this->canRefund);
         $this->creditMemo->refresh();
+    }
+
+    /**
+     * The refund cheque or receipt has its own edit lock: refuse removing one
+     * someone has open, and invalidate an editor that opened it earlier.
+     */
+    protected function refundEditable(Model $refund): bool
+    {
+        $locks = app(EditLockManager::class);
+
+        try {
+            $locks->assertWritable($refund, Auth::user());
+        } catch (RecordEditLockedException $e) {
+            Flux::toast(variant: 'danger', text: $e->getMessage());
+
+            return false;
+        }
+
+        $locks->touch($refund);
+
+        return true;
     }
 
     #[Computed]
@@ -244,6 +279,7 @@ new #[Title('Credit memo')] class extends Component {
         $this->showRefundModal = true;
     }
 
+    #[GuardsEditLock]
     public function submitRefund(ReceiptPoster $poster): void
     {
         if (! $this->canRefund) {
@@ -317,6 +353,9 @@ new #[Title('Credit memo')] class extends Component {
 
         $cheque->lines()->create([
             'account_id' => $ar->id,
+            // The AR line belongs to the credit memo's customer — the payee may be
+            // someone else by the time the operator reviews the draft.
+            'contact_id' => $this->creditMemo->contact_id,
             'description' => __('Refund of credit memo :no', ['no' => $this->creditMemo->credit_memo_no]),
             'amount_cents' => $amountCents,
             'line_order' => 0,
@@ -420,6 +459,8 @@ new #[Title('Credit memo')] class extends Component {
 }; ?>
 
 <section class="w-full">
+    <x-edit-lock.banner :lock="$this->editLockBanner" />
+
     <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
             <flux:heading size="xl" level="1">{{ __('Credit memo') }} {{ $creditMemo->credit_memo_no }}</flux:heading>

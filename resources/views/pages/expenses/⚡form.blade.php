@@ -5,6 +5,7 @@ use App\Enums\AccountSubtype;
 use App\Enums\AccountType;
 use App\Enums\ExpenseStatus;
 use App\Exceptions\Posting\PeriodLockedException;
+use App\Livewire\Concerns\GuardsEditLockedForm;
 use App\Livewire\Concerns\ManagesPayeeCombo;
 use App\Models\Account;
 use App\Models\Attachment;
@@ -18,9 +19,11 @@ use App\Models\TaxCode;
 use App\Rules\MoneyString;
 use App\Services\AttachmentService;
 use App\Services\Posting\ExpensePoster;
+use App\Support\Banking\LastBankAccount;
 use App\Support\Money;
 use App\Support\Tax\LineTaxBreakdown;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
@@ -30,6 +33,7 @@ use Livewire\WithFileUploads;
 
 new #[Title('Expense')] class extends Component
 {
+    use GuardsEditLockedForm;
     use ManagesPayeeCombo;
     use WithFileUploads;
 
@@ -58,6 +62,11 @@ new #[Title('Expense')] class extends Component
 
     /** @var array<int, mixed> */
     public array $newAttachments = [];
+
+    protected function editLockRecord(): ?Model
+    {
+        return $this->expense;
+    }
 
     public function mount(Company $company, ?Expense $expense = null): void
     {
@@ -97,10 +106,17 @@ new #[Title('Expense')] class extends Component
             }
         } else {
             $this->expense_date = $this->company->currentDateTime()->toDateString();
+            // Reopen on the account this operator last worked in anywhere in
+            // Banking; fall back to the lowest-numbered active bank account.
             $account = Account::query()->where('subtype', AccountSubtype::Bank->value)->where('is_active', true)->orderBy('code')->first();
-            $this->payment_account_id = $account?->id;
+            $this->payment_account_id = LastBankAccount::recall($company, $this->paymentAccounts) ?? $account?->id;
             $this->lines = [$this->emptyLine()];
         }
+    }
+
+    public function updatedPaymentAccountId(): void
+    {
+        LastBankAccount::remember($this->company, $this->payment_account_id);
     }
 
     /**
@@ -230,6 +246,7 @@ new #[Title('Expense')] class extends Component
             'memo' => ['nullable', 'string'],
             'lines' => ['array', 'min:1'],
             'lines.*.account_id' => ['required', 'integer', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
+            'lines.*.description' => ['nullable', 'string'],
             'lines.*.amount' => ['required', 'string', new MoneyString],
             'lines.*.tax_code_id' => ['nullable', 'integer', Rule::exists('tax_codes', 'id')->where('company_id', $companyId)],
             'lines.*.secondary_tax_code_id' => ['nullable', 'integer', Rule::exists('tax_codes', 'id')->where('company_id', $companyId)],
@@ -444,6 +461,9 @@ new #[Title('Expense')] class extends Component
 }; ?>
 
 <section class="w-full">
+    @if ($editLockBlocked) <x-edit-lock.blocked :lock="$this->editLockView" /> @else
+    <x-edit-lock.status :lock="$this->editLockView" />
+
     <flux:heading size="xl" level="1" class="mb-6">{{ $expense?->id ? __('Edit expense') : __('New expense') }}</flux:heading>
 
     <form wire:submit="postExpense" class="space-y-6">
@@ -666,4 +686,5 @@ new #[Title('Expense')] class extends Component
             </div>
         </div>
     </form>
+    @endif
 </section>

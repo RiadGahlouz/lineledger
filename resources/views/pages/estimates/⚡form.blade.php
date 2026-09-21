@@ -2,6 +2,7 @@
 
 use App\Actions\Sales\SaveEstimate;
 use App\Enums\EstimateStatus;
+use App\Livewire\Concerns\GuardsEditLockedForm;
 use App\Models\Account;
 use App\Models\Classification;
 use App\Models\Company;
@@ -18,6 +19,7 @@ use App\Support\Money;
 use App\Support\Quantity;
 use App\Support\Tax\LineTaxBreakdown;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -25,6 +27,8 @@ use Livewire\Component;
 
 new #[Title('Estimate')] class extends Component
 {
+    use GuardsEditLockedForm;
+
     public Company $company;
 
     public ?Estimate $estimate = null;
@@ -71,6 +75,11 @@ new #[Title('Estimate')] class extends Component
      * }>
      */
     public array $lines = [];
+
+    protected function editLockRecord(): ?Model
+    {
+        return $this->estimate;
+    }
 
     public function mount(Company $company, ?Estimate $estimate = null): void
     {
@@ -529,6 +538,9 @@ new #[Title('Estimate')] class extends Component
 }; ?>
 
 <section class="w-full">
+    @if ($editLockBlocked) <x-edit-lock.blocked :lock="$this->editLockView" /> @else
+    <x-edit-lock.status :lock="$this->editLockView" />
+
     <flux:heading size="xl" level="1" class="mb-6">{{ $estimate?->id ? __('Edit estimate') : __('New estimate') }}</flux:heading>
 
     <form wire:submit="save" class="space-y-6">
@@ -748,4 +760,5 @@ new #[Title('Estimate')] class extends Component
             <flux:button variant="primary" type="submit" data-test="save-estimate-button">{{ __('Save estimate') }}</flux:button>
         </div>
     </form>
+    @endif
 </section>

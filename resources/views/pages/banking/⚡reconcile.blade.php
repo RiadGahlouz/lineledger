@@ -15,6 +15,7 @@ use App\Models\CustomerReceipt;
 use App\Models\JournalLine;
 use App\Services\AttachmentService;
 use App\Services\Reconciliation\BankReconciliationService;
+use App\Support\Banking\LastBankAccount;
 use App\Support\Money;
 use Flux\Flux;
 use Illuminate\Support\Collection;
@@ -77,13 +78,17 @@ new #[Title('Reconcile')] class extends Component {
         if ($requested) {
             $this->account_id = (int) $requested;
         } else {
+            // Reopen on the account this operator last worked in anywhere in
+            // Banking; fall back to the lowest-numbered active account.
             $first = Account::query()
                 ->whereIn('subtype', [AccountSubtype::Bank->value, AccountSubtype::CreditCard->value])
                 ->where('is_active', true)
                 ->orderBy('code')
                 ->first();
-            $this->account_id = $first?->id;
+            $this->account_id = LastBankAccount::recall($company, $this->bankAccounts) ?? $first?->id;
         }
+
+        LastBankAccount::remember($company, $this->account_id);
 
         $this->statementDate = $this->defaultStatementDate();
         $this->serviceChargeDate = $this->statementDate;
@@ -98,6 +103,8 @@ new #[Title('Reconcile')] class extends Component {
      */
     public function updatedAccountId(): void
     {
+        LastBankAccount::remember($this->company, $this->account_id);
+
         $this->statementDate = $this->defaultStatementDate();
         $this->serviceChargeDate = $this->statementDate;
         $this->interestDate = $this->statementDate;
@@ -727,14 +734,13 @@ new #[Title('Reconcile')] class extends Component {
         $lines = JournalLine::query()
             ->with('journalEntry')
             ->where('account_id', $rec->account_id)
+            // Rows a *different* completed reconciliation already claimed are
+            // held back; undo that reconciliation to get them back.
             ->where(fn ($q) => $q->whereNull('bank_reconciliation_id')->orWhere('bank_reconciliation_id', $rec->id))
-            ->whereHas('journalEntry', fn ($q) => $q->where('is_posted', true)
-                ->whereNull('voided_at')
-                // Hide the reversal half of a replaced/removed service-charge or
-                // interest entry so editing a reconciliation never leaves a
-                // phantom line behind.
-                ->where(fn ($q) => $q->whereNull('reverses_entry_id')
-                    ->orWhereDoesntHave('reverses', fn ($q) => $q->where('source_type', BankReconciliation::class))))
+            ->whereHas('journalEntry', fn ($q) => $q->where('is_posted', true))
+            // A voided cheque and its reversal never reach the bank, so the
+            // pair is left off until either half is ticked or cleared.
+            ->withoutUnsettledVoids($rec)
             ->when($side === 'payments', fn ($q) => $q->where('credit_cents', '>', 0))
             ->when($side === 'deposits', fn ($q) => $q->where('debit_cents', '>', 0))
             ->orderBy('id')
