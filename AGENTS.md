@@ -7,7 +7,7 @@ LineLedger is **source-available double-entry accounting** (Laravel 13) for Cana
 - **Stack:** PHP 8.5+, Laravel 13, Livewire 4 single-file components, Flux UI Free, Tailwind CSS v4, Pest 4, Larastan level 5.
 - **License:** AGPL-3.0-or-later. Opening a PR accepts [CLA.md](CLA.md).
 - **Security:** do not open a public issue. Follow [SECURITY.md](SECURITY.md) or email hello@lineledger.ca.
-- **Status:** 1.0.0. This repository is not soliciting drive-by contributions; this file is for agents working in-tree.
+- **Status:** 1.1.0. This repository is not soliciting drive-by contributions; this file is for agents working in-tree.
 
 ---
 
@@ -29,7 +29,8 @@ Create both MySQL databases before migrating (`lineledger` and `lineledger_test`
 | `DB_CONNECTION=sqlite DB_DATABASE=':memory:' ./vendor/bin/pest` | **CI-exact** database |
 | `composer run test` | `config:clear` → Pint `--test` → `npm test` → Pest. **Not** full CI: no PHPStan, MySQL not SQLite, no `npm run build` |
 | `vendor/bin/phpstan analyse --memory-limit=1G` | Larastan level 5 on `app/`, baselined in `phpstan-baseline.neon` (fails on **new** findings only) |
-| `npm test` | `tests/js/**/*.test.js` (amount-expression parser) |
+| `npm test` | `tests/js/**/*.test.js` (amount-expression parser, date-picker, edit-lock, escape-back) |
+| `php artisan app:upgrade` | Post-deploy: migrate, then release data steps (`banking:backfill-line-memos`, `banking:backfill-reconciliation-stamps`). `--verify` finishes with `integrity:check`. Docker/Forge call this instead of `migrate --force`. See [`UPGRADING.md`](UPGRADING.md) |
 | `php artisan proof:generate` | Public `/verification` artifacts |
 | `php artisan payroll:verify-constants` / `payroll:verify-calculations` | After editing payroll constant tables |
 
@@ -97,8 +98,8 @@ Standard Laravel tree. Accounting-specific code:
 | `routes/settings.php` | Profile, security, companies, report groups |
 | `routes/docs.php` | In-app manuals |
 | `routes/console.php` | Scheduler |
-| `tests/Feature/` | ~507 Pest feature tests |
-| `tests/Unit/` | ~33 unit tests (no `RefreshDatabase`) |
+| `tests/Feature/` | ~561 Pest feature tests |
+| `tests/Unit/` | ~36 unit tests (no `RefreshDatabase`) |
 | `tests/js/` | Node tests |
 
 `config/livewire.php` maps namespace `pages` → `resources/views/pages` and enables the ⚡ filename emoji.
@@ -265,6 +266,7 @@ new #[Title('Invoices')] class extends Component
 - Toasts: `Flux::toast(variant: 'success', text: __('…'))`.
 - Lists: `flux:heading` + primary `flux:button icon="plus"` with `wire:navigate`; mobile cards (`lg:hidden`) + desktop table (`hidden lg:block`); `data-test` on interactive controls; `$this->invoices->links()`.
 - Money cells: `<x-amount-input>`. **Do not** put Blade directives or huge attribute stacks on `<flux:input>` — Blade’s component-tag compiler can catastrophic-backtrack. Merge `wire:model*` via `$attributes` (see `resources/views/components/amount-input.blade.php`).
+- Document create/edit forms that mutate a posted-or-draft record take an edit lock: `HoldsEditLock` / `GuardsEditLockedForm` / `ShowsEditLock` in `app/Livewire/Concerns/`, plus `<x-edit-lock.*>`. Do not add a second locking scheme.
 - Reports: `HasReportDateRange`, `HasReportChart`, `HasReportComparison`, `HasReportBasis`, `HasReportNotes`, `HasReportNumberFormat`, `HasCustomReportHeader`, `HasReportDimensions`, `Memorizable`, `EmailsReport` + `<x-reports.control-bar>` + `<x-reports.chart-panel>`.
 - Settings chrome: `<x-pages::settings.layout :heading="__('…')" :subheading="__('…')">`.
 - Portals use `#[Layout('layouts.portal')]` / `layouts.employee-portal`; the wizard uses `layouts.onboarding`.
@@ -278,7 +280,7 @@ Budgets (`pages/budgets/*.blade.php`) are SFCs **without** the ⚡ prefix — do
 | List | `resources/views/pages/invoices/⚡index.blade.php` |
 | Form | `resources/views/pages/invoices/⚡form.blade.php` |
 | Report | `resources/views/pages/reports/⚡income-statement.blade.php` |
-| Combos | `resources/views/components/{contact,line-item,payee,journal-contact}-combo.blade.php` |
+| Combos | `resources/views/components/{contact,line-item,line-contact,payee,journal-contact}-combo.blade.php` |
 | Amount | `resources/views/components/amount-input.blade.php` |
 | Nav catalog | `app/Support/Navigation/SidebarNavCatalog.php` |
 | Company switcher | `resources/views/components/⚡company-switcher.blade.php` |
@@ -288,7 +290,7 @@ Budgets (`pages/budgets/*.blade.php`) are SFCs **without** the ⚡ prefix — do
 - Tailwind v4 CSS-first: `resources/css/app.css`. **No** `tailwind.config.js`.
 - Prefer tokens: `bg-background`, `text-foreground`, `text-muted-foreground`, `border-border`, `bg-muted`, `bg-card`. Palette is Tidewater (teal primary). Font is Instrument Sans (Bunny, via `vite.config.js`).
 - Prefer logical spacing (`ms-`, `me-`, `ps-`, `pe-`, `start-`, `end-`) for new layout.
-- JS entries: `resources/js/app.js` (Alpine: `geoBanner`, calculators, charts) and **separate** `resources/js/passkeys.js`. Parser: `resources/js/amount-expression.js`, tested by `npm test`.
+- JS entries: `resources/js/app.js` (Alpine: `geoBanner`, calculators, charts, date-picker, edit-lock, escape-back) and **separate** `resources/js/passkeys.js`. Parser: `resources/js/amount-expression.js`. `npm test` covers `tests/js/**/*.test.js`.
 - Do not add Alpine `x-on:*` piles on Flux tags; bind in `alpine:init` / `init()`.
 - `layouts/app/header.blade.php` is an unused starter leftover — do not wire new UI through it.
 
@@ -399,11 +401,11 @@ Scheduler is `routes/console.php`. Every task has `onFailure(SchedulerFailureAle
 | `security:monitor {--window=} {--no-alert}` | hourly |
 | `ops:monitor-failed-jobs {--window=} {--no-alert}` | hourly |
 
-On-demand (not scheduled): `audit:verify`, `backup:export` / `backup:import`, `storage:check`, `proof:generate`, `payroll:verify-*`. Payroll year-end procedure is in README — append tables in `app/Support/Payroll/Constants/{Federal,Provincial}Constants.php`, never rewrite history.
+On-demand (not scheduled): `app:upgrade`, `audit:verify`, `backup:export` / `backup:import`, `storage:check`, `proof:generate`, `payroll:verify-*`. Payroll year-end procedure is in README — append tables in `app/Support/Payroll/Constants/{Federal,Provincial}Constants.php`, never rewrite history.
 
 `composer run setup` installs and migrates **without** `--seed`. Demo seeder is **not** part of `DatabaseSeeder`.
 
-Docker: FrankenPHP PHP 8.5 image, compose in `docker/`. Do **not** scale the `app` service (it runs migrations). Scale `queue` instead. MySQL is started with `--skip-log-bin` so audit-log triggers can be created. Container start **exits** if `APP_KEY` is unset. Health: `GET /up`.
+Docker: two compose files — do not mix them. Root `docker-compose.yml` is the **dev** bind-mount (`docker/Dockerfile.dev`; PHP/Node/MySQL/Vite/Mailpit). `docker/docker-compose.yml` is the **self-host** GHCR image (FrankenPHP PHP 8.5, no bind mount, `config:cache`). Do **not** scale the `app` service (it runs `app:upgrade` / migrations). Scale `queue` instead. MySQL is started with `--skip-log-bin` so audit-log triggers can be created. Self-host container start **exits** if `APP_KEY` is unset. Health: `GET /up`.
 
 ---
 
