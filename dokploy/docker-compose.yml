@@ -1,0 +1,63 @@
+x-app-base: &app-base
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  pull_policy: always
+  restart: unless-stopped
+  env_file:
+    - .env
+  volumes:
+    - lineledger_storage:/app/storage
+  networks:
+    - internal
+
+services:
+  app:
+    <<: *app-base
+    environment:
+      CONTAINER_ROLE: app
+      SERVER_NAME: ":8080"
+    expose:
+      - "8080"
+    volumes:
+      - lineledger_storage:/app/storage
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/up"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 120s
+    networks:
+      - internal
+      - dokploy-network
+
+  queue:
+    <<: *app-base
+    environment:
+      CONTAINER_ROLE: queue
+    command: php artisan queue:work --queue=default --tries=3 --timeout=120 --sleep=3
+    healthcheck:
+      disable: true
+    depends_on:
+      app:
+        condition: service_healthy
+
+  scheduler:
+    <<: *app-base
+    environment:
+      CONTAINER_ROLE: scheduler
+    command: php artisan schedule:work
+    healthcheck:
+      disable: true
+    depends_on:
+      app:
+        condition: service_healthy
+
+networks:
+  internal:
+    driver: bridge
+  dokploy-network:
+    external: true
+
+volumes:
+  lineledger_storage:
