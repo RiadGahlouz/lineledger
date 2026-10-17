@@ -85,20 +85,9 @@ final class EnsureStripeAccounts
 
     private function paymentMethod(Company $company): PaymentMethod
     {
-        $existing = PaymentMethod::withoutGlobalScopes()
-            ->where('company_id', $company->id)
-            ->where('name', self::METHOD_NAME)
-            ->first();
-
-        if ($existing !== null) {
-            return $existing;
-        }
-
-        return PaymentMethod::withoutGlobalScopes()->create([
-            'company_id' => $company->id,
-            'name' => self::METHOD_NAME,
-            'is_cheque' => false,
-            'is_active' => true,
-        ]);
+        return PaymentMethod::withoutGlobalScopes()->firstOrCreate(
+            ['company_id' => $company->id, 'name' => self::METHOD_NAME],
+            ['is_cheque' => false, 'is_active' => true],
+        );
     }
 }
