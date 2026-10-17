@@ -159,7 +159,7 @@ final class Locales
     }
 
     /**
-     * A document date. English keeps each template's own format (as on main);
+     * A document date. English keeps each template's own format;
      * every other locale prints ISO 8601 so dates match across documents.
      */
     public static function formatDate(?CarbonInterface $date, string $english = 'n/j/Y'): string
