@@ -251,7 +251,7 @@
                 @foreach ($schedule as $row)
                     <tr>
                         <td>{{ $row['request']->label }}</td>
-                        <td>{{ \App\Support\Locales::formatDate($row['request']->due_date) }}</td>
+                        <td>{{ $row['request']->due_date?->toDateString() }}</td>
                         <td class="num">{{ number_format($row['request']->amount_cents / 100, 2) }}</td>
                         <td class="num">{{ $row['status']->label() }}</td>
                     </tr>

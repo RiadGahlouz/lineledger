@@ -95,8 +95,25 @@ it('renders invoice chrome in the customer document language', function () {
 
     expect($html)->toContain('FACTURE')
         ->and($html)->toContain('Facturer à')
-        ->and($html)->toContain('4 mars 2026')
+        ->and($html)->toContain('2026-03-04')
         ->and($html)->not->toContain('>INVOICE<');
+});
+
+it('keeps English invoice dates exactly as on main', function () {
+    $customer = Contact::create(['display_name' => 'Acme', 'is_customer' => true, 'locale' => 'en']);
+    $invoice = makeLocaleInvoice($this, $customer);
+    $invoice->paymentRequests()->create([
+        'label' => 'Deposit',
+        'request_type' => 'fixed',
+        'amount_cents' => 5000,
+        'due_date' => '2026-04-04',
+        'sort_order' => 0,
+    ]);
+
+    $html = app(InvoicePdfRenderer::class)->html($this->company, $invoice->fresh(['contact']));
+
+    expect($html)->toContain('3/4/2026')
+        ->and($html)->toContain('2026-04-04');
 });
 
 it('falls back to the organization document language when the contact has none', function () {
@@ -200,7 +217,7 @@ it('renders estimate chrome and dates in the customer document language', functi
     ])->render());
 
     expect($html)->toContain('SOUMISSION')
-        ->and($html)->toContain('4 mars 2026')
+        ->and($html)->toContain('2026-03-04')
         ->and($html)->not->toContain('3/4/2026')
         ->and($html)->not->toContain('>ESTIMATE<');
 });
