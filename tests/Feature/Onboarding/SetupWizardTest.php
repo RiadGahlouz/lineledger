@@ -53,21 +53,26 @@ test('organization type, industry, tax, and chart labels are translated in Frenc
         ->assertSee('Compte de chèques');
 });
 
-test('a French UI locale seeds French account names that match the edit form', function () {
+test('a French UI locale keeps stored seeded account and tax-code names in English', function () {
     app()->setLocale('fr');
 
     Livewire::test('pages::welcome.setup-wizard')
         ->set('companyName', 'Fr Co')
         ->set('country', 'CA')
-        ->set('region', 'ON')
-        ->set('chargesPst', false)
+        ->set('region', 'QC')
         ->call('createCompany')
         ->assertHasNoErrors();
 
     $company = Company::where('name', 'Fr Co')->firstOrFail();
     $chequing = seededAccounts($company)->firstWhere('code', '1000');
+    $qstPayable = seededAccounts($company)->firstWhere('code', '2210');
+    $gst = TaxCode::withoutGlobalScopes()->where('company_id', $company->id)->where('code', 'GST')->first();
+    $qst = TaxCode::withoutGlobalScopes()->where('company_id', $company->id)->where('code', 'QST-QC')->first();
 
-    expect($chequing?->name)->toBe('Compte de chèques');
+    expect($chequing?->name)->toBe('Chequing')
+        ->and($qstPayable?->name)->toBe('QST Payable')
+        ->and($gst?->name)->toBe('GST (5%)')
+        ->and($qst?->name)->toBe('QST (9.975%)');
 });
 
 /**

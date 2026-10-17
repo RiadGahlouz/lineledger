@@ -7,7 +7,6 @@ use App\Models\Contact;
 use App\Models\Invoice;
 use App\Services\Reporting\InvoicePdfRenderer;
 use App\Support\Locales;
-use App\Support\Money;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -60,8 +59,7 @@ class InvoiceSharedNotification extends Notification implements ShouldQueue
     {
         $companyName = $this->company->brand_name ?: $this->company->name;
         $senderName = $this->senderName ?: $companyName;
-        $currency = $this->invoice->currency_code ?: $this->company->currency_code;
-        $amount = Money::fromCents((int) $this->invoice->total_cents, $currency)->format();
+        $amount = number_format($this->invoice->total_cents / 100, 2).' '.$this->company->currency_code;
         $renderer = app(InvoicePdfRenderer::class);
 
         // Send from a no-reply mailbox on the platform's verified domain so the
@@ -97,9 +95,7 @@ class InvoiceSharedNotification extends Notification implements ShouldQueue
                 'detailLine' => __('Invoice :no — :amount, due :due.', [
                     'no' => $this->invoice->invoice_no,
                     'amount' => $amount,
-                    'due' => $this->invoice->due_date
-                        ? Locales::formatDate($this->invoice->due_date)
-                        : __('on receipt'),
+                    'due' => $this->invoice->due_date?->toDateString() ?? __('on receipt'),
                 ]),
                 'actionUrl' => $this->payUrl,
             ])

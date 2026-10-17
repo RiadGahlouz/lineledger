@@ -543,7 +543,10 @@ new #[Title('For Review')] class extends Component {
     }
 
     /**
-     * @return array<int, array{value: int, label: string}>
+     * The code and name ride alongside the label for the typeable account
+     * picker (<x-account-combo>), which ranks GL-number matches first.
+     *
+     * @return array<int, array{value: int, label: string, code: string, name: string}>
      */
     #[Computed]
     public function categoryOptions(): array
@@ -553,7 +556,7 @@ new #[Title('For Review')] class extends Component {
             ->where('is_active', true)
             ->orderBy('code')
             ->get(['id', 'code', 'name'])
-            ->map(fn (Account $a) => ['value' => $a->id, 'label' => "{$a->code} — {$a->name}"])
+            ->map(fn (Account $a) => ['value' => $a->id, 'label' => "{$a->code} — {$a->displayName()}", 'code' => (string) $a->code, 'name' => $a->displayName()])
             ->all();
     }
 
@@ -712,7 +715,7 @@ new #[Title('For Review')] class extends Component {
             <flux:select wire:model.live="accountFilter" :label="__('Account')" class="max-w-[240px]" data-test="review-account-filter">
                 <flux:select.option value="">{{ __('All accounts') }}</flux:select.option>
                 @foreach ($this->bankAccounts as $acct)
-                    <flux:select.option :value="$acct->id">{{ $acct->code }} — {{ $acct->name }}</flux:select.option>
+                    <flux:select.option :value="$acct->id">{{ $acct->code }} — {{ $acct->displayName() }}</flux:select.option>
                 @endforeach
             </flux:select>
             <flux:switch wire:model.live="showExcluded" :label="__('Excluded')" data-test="review-show-excluded" />
@@ -728,7 +731,7 @@ new #[Title('For Review')] class extends Component {
                     @foreach ($this->transferCandidates as $pair)
                         <tr data-test="transfer-pair" wire:key="xfer-{{ $pair['out']->id }}-{{ $pair['in']->id }}">
                             <td class="px-4 py-2">
-                                {{ $pair['out']->account?->name }} → {{ $pair['in']->account?->name }}
+                                {{ $pair['out']->account?->displayName() }} → {{ $pair['in']->account?->displayName() }}
                                 <span class="text-muted-foreground">· {{ $pair['out']->txn_date?->toDateString() }}</span>
                             </td>
                             <td class="px-4 py-2 text-right font-mono">{{ number_format(abs($pair['out']->amount_cents) / 100, 2) }}</td>
@@ -794,6 +797,9 @@ new #[Title('For Review')] class extends Component {
                         $candidates = $this->billCandidates[$line->id] ?? null;
                         $coveringRule = $this->ruleCoveredLines[$line->id] ?? null;
                         $categoryChosen = ($categories[$line->id] ?? null) ?: $line->suggested_account_id;
+                        $categoryPlaceholder = $line->suggested_account_id && $line->suggestedAccount
+                            ? $line->suggestedAccount->code.' — '.$line->suggestedAccount->displayName()
+                            : __('— pick —');
                         $sourceIcon = match ($line->suggestion_source) {
                             \App\Enums\StatementSuggestionSource::Rule => 'bolt',
                             \App\Enums\StatementSuggestionSource::History => 'clock',
@@ -812,12 +818,7 @@ new #[Title('For Review')] class extends Component {
                             {{ number_format($line->amount_cents / 100, 2) }}
                         </td>
                         <td class="px-3 py-2 align-top">
-                            <flux:select wire:model="categories.{{ $line->id }}" size="sm" class="min-w-[180px]" data-test="review-category">
-                                <flux:select.option value="">{{ $line->suggested_account_id && $line->suggestedAccount ? $line->suggestedAccount->code.' — '.$line->suggestedAccount->name : __('— pick —') }}</flux:select.option>
-                                @foreach ($this->categoryOptions as $opt)
-                                    <flux:select.option :value="$opt['value']">{{ $opt['label'] }}</flux:select.option>
-                                @endforeach
-                            </flux:select>
+                            <x-account-combo model="categories.{{ $line->id }}" options="categories" :live="false" size="sm" class="min-w-[180px]" :placeholder="$categoryPlaceholder" data-test="review-category" />
                             @if ($line->isOutflow() && ! $showExcluded)
                                 @php($taxIds = array_values(array_filter($this->lineTaxIds($line))))
                                 <flux:dropdown class="mt-1">
@@ -907,6 +908,9 @@ new #[Title('For Review')] class extends Component {
         </table>
     </div>
 
+    {{-- Accounts for the category pickers on each row and in the split modal. --}}
+    <x-account-combo.options key="categories" :options="$this->categoryOptions" />
+
     {{-- Split modal --}}
     <flux:modal name="split-line" class="md:w-[760px]" wire:close="cancelSplit">
         @php($splitSum = collect($splits)->sum(fn ($s) => trim((string) $s['amount']) === '' ? 0 : Money::fromString((string) $s['amount'])->cents))
@@ -930,12 +934,7 @@ new #[Title('For Review')] class extends Component {
             @foreach ($splits as $i => $split)
                 @php($splitTaxIds = array_values(array_filter(array_map('intval', (array) ($split['tax_code_ids'] ?? [])))))
                 <div class="grid grid-cols-12 gap-2" wire:key="split-{{ $i }}" data-test="split-row">
-                    <flux:select wire:model="splits.{{ $i }}.account_id" class="{{ $splitIsOutflow ? 'col-span-5' : 'col-span-7' }}" data-test="split-account">
-                        <flux:select.option value="">{{ __('— category —') }}</flux:select.option>
-                        @foreach ($this->categoryOptions as $opt)
-                            <flux:select.option :value="$opt['value']">{{ $opt['label'] }}</flux:select.option>
-                        @endforeach
-                    </flux:select>
+                    <x-account-combo model="splits.{{ $i }}.account_id" options="categories" :live="false" class="{{ $splitIsOutflow ? 'col-span-5' : 'col-span-7' }}" :placeholder="__('— category —')" data-test="split-account" />
                     @if ($splitIsOutflow)
                         <flux:dropdown class="col-span-3">
                             <flux:button variant="outline" icon:trailing="chevron-down" class="w-full justify-between font-normal" data-test="split-tax">

@@ -15,6 +15,7 @@ final class TaxCopy
     {
         return [
             __('EX'),
+            __('Exempt'),
             __('GST'),
             __('GST (5%)'),
             __('HST Nova Scotia (15%)'),

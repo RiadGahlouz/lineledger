@@ -63,7 +63,7 @@
                         <th>{{ __('Receipt #') }}</th>
                     </tr>
                     <tr>
-                        <td>{{ $receipt->receipt_date?->format('n/j/Y') }}</td>
+                        <td>{{ \App\Support\Locales::formatDate($receipt->receipt_date) }}</td>
                         <td>{{ $receipt->sales_receipt_no }}</td>
                     </tr>
                 </table>
@@ -87,9 +87,9 @@
             <td style="width: 48%;">
                 <div class="box">
                     <div class="box-label">{{ __('Payment Details') }}</div>
-                    <div>{{ __('Method') }}: {{ $receipt->paymentMethod?->name ?? '—' }}</div>
+                    <div>{{ __('Method') }}: {{ $receipt->paymentMethod?->displayName() ?? '—' }}</div>
                     <div>{{ __('Reference') }}: {{ $receipt->reference ?? '—' }}</div>
-                    <div>{{ __('Deposited to') }}: {{ $receipt->depositToAccount?->name }}</div>
+                    <div>{{ __('Deposited to') }}: {{ $receipt->depositToAccount?->displayName() }}</div>
                 </div>
             </td>
         </tr>

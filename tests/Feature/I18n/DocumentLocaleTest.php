@@ -35,8 +35,8 @@ function makeLocaleInvoice(object $test, Contact $customer): Invoice
     $invoice = Invoice::create([
         'contact_id' => $customer->id,
         'invoice_no' => 'INV-I18N-1',
-        'invoice_date' => CarbonImmutable::create(2026, 9, 7),
-        'due_date' => CarbonImmutable::create(2026, 10, 7),
+        'invoice_date' => CarbonImmutable::create(2026, 3, 4),
+        'due_date' => CarbonImmutable::create(2026, 4, 4),
     ]);
 
     $invoice->lines()->create([
@@ -66,11 +66,14 @@ it('resolves document locale from the contact then the company', function () {
     expect(Locales::forDocument($customer->fresh(), $company->fresh()))->toBe('en');
 });
 
-it('defaults document locale to French for a Quebec company when unset', function () {
-    $company = Company::factory()->create(['address_region' => 'QC', 'locale' => null]);
+it('falls back to the app default locale rather than the active UI locale or region when unset', function () {
+    $company = Company::factory()->create(['address_region' => 'QC']);
+    $company->forceFill(['locale' => null])->saveQuietly();
     $customer = Contact::create(['display_name' => 'Acme', 'is_customer' => true, 'locale' => null]);
 
-    expect(Locales::forDocument($customer, $company))->toBe('fr');
+    Locales::apply('fr');
+
+    expect(Locales::forDocument($customer, $company))->toBe('en');
 });
 
 it('defaults company locale to French when created with Quebec region', function () {
@@ -92,7 +95,25 @@ it('renders invoice chrome in the customer document language', function () {
 
     expect($html)->toContain('FACTURE')
         ->and($html)->toContain('Facturer à')
+        ->and($html)->toContain('2026-03-04')
         ->and($html)->not->toContain('>INVOICE<');
+});
+
+it('keeps English invoice dates exactly as on main', function () {
+    $customer = Contact::create(['display_name' => 'Acme', 'is_customer' => true, 'locale' => 'en']);
+    $invoice = makeLocaleInvoice($this, $customer);
+    $invoice->paymentRequests()->create([
+        'label' => 'Deposit',
+        'request_type' => 'fixed',
+        'amount_cents' => 5000,
+        'due_date' => '2026-04-04',
+        'sort_order' => 0,
+    ]);
+
+    $html = app(InvoicePdfRenderer::class)->html($this->company, $invoice->fresh(['contact']));
+
+    expect($html)->toContain('3/4/2026')
+        ->and($html)->toContain('2026-04-04');
 });
 
 it('falls back to the organization document language when the contact has none', function () {
@@ -163,7 +184,7 @@ it('applies ?lang= for guests and shows the language switcher', function () {
         ->assertSee('Français');
 });
 
-it('renders estimate chrome in the customer document language', function () {
+it('renders estimate chrome and dates in the customer document language', function () {
     $customer = Contact::create([
         'display_name' => 'Acme',
         'is_customer' => true,
@@ -173,8 +194,8 @@ it('renders estimate chrome in the customer document language', function () {
     $estimate = Estimate::create([
         'contact_id' => $customer->id,
         'estimate_no' => 'EST-I18N-1',
-        'estimate_date' => CarbonImmutable::create(2026, 9, 7),
-        'expires_on' => CarbonImmutable::create(2026, 10, 7),
+        'estimate_date' => CarbonImmutable::create(2026, 3, 4),
+        'expires_on' => CarbonImmutable::create(2026, 4, 4),
     ]);
     $estimate->lines()->create([
         'account_id' => $this->income->id,
@@ -196,6 +217,8 @@ it('renders estimate chrome in the customer document language', function () {
     ])->render());
 
     expect($html)->toContain('SOUMISSION')
+        ->and($html)->toContain('2026-03-04')
+        ->and($html)->not->toContain('3/4/2026')
         ->and($html)->not->toContain('>ESTIMATE<');
 });
 

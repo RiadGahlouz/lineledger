@@ -112,6 +112,10 @@ return [
 
     'locale' => env('APP_LOCALE', 'en'),
 
+    // The configured default, kept apart from 'locale' because App::setLocale()
+    // rewrites that one per request. Documents fall back to this.
+    'default_locale' => env('APP_LOCALE', 'en'),
+
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 
     /*

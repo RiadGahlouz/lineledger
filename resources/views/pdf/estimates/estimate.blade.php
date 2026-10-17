@@ -68,7 +68,7 @@
                         <th>{{ __('Estimate #') }}</th>
                     </tr>
                     <tr>
-                        <td>{{ $estimate->estimate_date?->format('n/j/Y') }}</td>
+                        <td>{{ \App\Support\Locales::formatDate($estimate->estimate_date) }}</td>
                         <td>{{ $estimate->estimate_no }}</td>
                     </tr>
                 </table>
@@ -107,7 +107,7 @@
         </tr>
         <tr>
             <td>{{ optional($estimate->terms)->name ?? '—' }}</td>
-            <td>{{ $estimate->expires_on?->format('n/j/Y') ?? '—' }}</td>
+            <td>{{ \App\Support\Locales::formatDate($estimate->expires_on) }}</td>
             <td>{{ $estimate->customer_po ?: '—' }}</td>
             <td>{{ optional($estimate->salesRep)->display_name ?? '—' }}</td>
         </tr>
@@ -136,7 +136,7 @@
                     <td>
                         {{ $line->description }}
                         @if ($line->service_date)
-                            <div class="muted" style="font-size: 9px;">{{ __('Service date') }}: {{ $line->service_date->format('n/j/Y') }}</div>
+                            <div class="muted" style="font-size: 9px;">{{ __('Service date') }}: {{ \App\Support\Locales::formatDate($line->service_date) }}</div>
                         @endif
                     </td>
                     @if ($settings->show_tax_column)

@@ -90,11 +90,7 @@ final class Locales
             }
         }
 
-        if ($company?->address_region === 'QC') {
-            return 'fr';
-        }
-
-        return self::canonicalize(App::getLocale());
+        return self::canonicalize((string) config('app.default_locale', 'en'));
     }
 
     public static function apply(string $locale): void
@@ -162,20 +158,19 @@ final class Locales
         }
     }
 
-    public static function formatDate(?CarbonInterface $date): string
+    /**
+     * A document date. English keeps each template's own format;
+     * every other locale prints ISO 8601 so dates match across documents.
+     */
+    public static function formatDate(?CarbonInterface $date, string $english = 'n/j/Y'): string
     {
         if ($date === null) {
             return '—';
         }
 
         $immutable = CarbonImmutable::parse($date);
-        $code = App::getLocale();
 
-        if ($code === 'en') {
-            return $immutable->format('n/j/Y');
-        }
-
-        return $immutable->locale(self::icu($code))->isoFormat('D MMM YYYY');
+        return App::getLocale() === 'en' ? $immutable->format($english) : $immutable->format('Y-m-d');
     }
 
     public static function formatMoney(int $cents, string $currency): string

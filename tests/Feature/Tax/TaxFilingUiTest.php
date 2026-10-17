@@ -82,7 +82,7 @@ it('translates CRA form titles and descriptions in French', function () {
     Livewire::test('pages::settings.tax-and-filing', ['company' => $p])
         ->assertOk()
         ->assertSee('T2 Déclaration de revenus des sociétés')
-        ->assertSee('Utilisez ce formulaire comme déclaration de revenus fédérale et provinciale ou territoriale');
+        ->assertSee('Déclaration annuelle des sociétés. Les états financiers sont produits selon les annexes 100 (bilan) et 125 (état des résultats) de l’IGRF.');
 });
 
 it('404s the Tax & filing page for a non-Canadian company', function () {

@@ -68,7 +68,7 @@
                         <th>{{ __('Order #') }}</th>
                     </tr>
                     <tr>
-                        <td>{{ $salesOrder->order_date?->format('n/j/Y') }}</td>
+                        <td>{{ \App\Support\Locales::formatDate($salesOrder->order_date) }}</td>
                         <td>{{ $salesOrder->order_no }}</td>
                     </tr>
                 </table>
@@ -107,7 +107,7 @@
         </tr>
         <tr>
             <td>{{ optional($salesOrder->terms)->name ?? '—' }}</td>
-            <td>{{ $salesOrder->expected_date?->format('n/j/Y') ?? '—' }}</td>
+            <td>{{ \App\Support\Locales::formatDate($salesOrder->expected_date) }}</td>
             <td>{{ $salesOrder->customer_po ?: '—' }}</td>
             <td>{{ optional($salesOrder->salesRep)->display_name ?? '—' }}</td>
         </tr>
@@ -122,7 +122,7 @@
                 <th>{{ __('Tracking #') }}</th>
             </tr>
             <tr>
-                <td>{{ $salesOrder->ship_date?->format('n/j/Y') ?? '—' }}</td>
+                <td>{{ \App\Support\Locales::formatDate($salesOrder->ship_date) }}</td>
                 <td>{{ $salesOrder->ship_via ?: '—' }}</td>
                 <td>{{ $salesOrder->fob ?: '—' }}</td>
                 <td>{{ $salesOrder->tracking_no ?: '—' }}</td>
@@ -153,7 +153,7 @@
                     <td>
                         {{ $line->description }}
                         @if ($line->service_date)
-                            <div class="muted" style="font-size: 9px;">{{ __('Service date') }}: {{ $line->service_date->format('n/j/Y') }}</div>
+                            <div class="muted" style="font-size: 9px;">{{ __('Service date') }}: {{ \App\Support\Locales::formatDate($line->service_date) }}</div>
                         @endif
                     </td>
                     @if ($settings->show_tax_column)

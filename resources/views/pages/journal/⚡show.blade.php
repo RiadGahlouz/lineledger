@@ -1,8 +1,11 @@
 <?php
 
+use App\Actions\Accounting\DeleteDraftJournalEntry;
 use App\Actions\Accounting\ReverseJournalEntry;
 use App\Enums\AccountSubtype;
+use App\Exceptions\Posting\LinkedJournalEntryException;
 use App\Exceptions\Posting\PeriodLockedException;
+use App\Exceptions\Posting\PostedDocumentDeletionException;
 use App\Livewire\Attributes\GuardsEditLock;
 use App\Livewire\Concerns\ShowsEditLock;
 use App\Models\Company;
@@ -104,6 +107,25 @@ new #[Title('Journal entry')] class extends Component {
         }
 
         Flux::toast(variant: 'success', text: __('Entry voided.'));
+        $this->redirectRoute('journal.index', ['company' => $this->company->slug], navigate: true);
+    }
+
+    /**
+     * Permanently remove a draft. It never reached the ledger, so unlike void
+     * there is no reversing entry — the entry and its lines are simply gone.
+     */
+    #[GuardsEditLock]
+    public function deleteDraft(DeleteDraftJournalEntry $action): void
+    {
+        try {
+            $action->handle($this->entry);
+        } catch (PostedDocumentDeletionException|LinkedJournalEntryException) {
+            Flux::toast(variant: 'danger', text: __('Only a draft entry can be deleted. Void a posted entry instead.'));
+
+            return;
+        }
+
+        Flux::toast(variant: 'success', text: __('Draft deleted.'));
         $this->redirectRoute('journal.index', ['company' => $this->company->slug], navigate: true);
     }
 
@@ -225,6 +247,11 @@ new #[Title('Journal entry')] class extends Component {
                         <flux:menu.item icon="x-circle" variant="danger" wire:click="void" wire:confirm="{{ __('Void this entry? A reversing entry will be posted.') }}" data-test="void-entry-button">
                             {{ __('Void') }}
                         </flux:menu.item>
+                    @elseif (! $entry->isPosted() && $entry->source_type === null)
+                        <flux:menu.separator />
+                        <flux:menu.item icon="trash" variant="danger" wire:click="deleteDraft" wire:confirm="{{ __('Delete this draft entry? It has not been posted, so nothing is reversed — it is removed permanently.') }}" data-test="delete-entry-button">
+                            {{ __('Delete draft') }}
+                        </flux:menu.item>
                     @endif
                 </flux:menu>
             </flux:dropdown>
@@ -275,7 +302,7 @@ new #[Title('Journal entry')] class extends Component {
             <tbody class="divide-y divide-border">
                 @foreach ($entry->lines as $line)
                     <tr data-test="entry-show-line">
-                        <td class="px-4 py-2">{{ $line->account->code }} — {{ $line->account->name }}</td>
+                        <td class="px-4 py-2">{{ $line->account->code }} — {{ $line->account->displayName() }}</td>
                         <td class="px-4 py-2 text-muted-foreground">{{ $line->memo }}</td>
                         @if ($showTaxCodes)
                             <td class="px-4 py-2 text-muted-foreground" data-test="line-tax-code">{{ $this->lineTaxCodes[$line->tax_code_id] ?? '' }}</td>

@@ -236,7 +236,7 @@ new #[Title('Invoice settings')] class extends Component {
                 <flux:select wire:model="defaultSalesAccountId" :label="__('Default sales account')" :description="__('Used when a line has no account — including when the Account column is hidden. Items with their own income account still override this.')" data-test="invoice-default-sales-account">
                     <flux:select.option value="">{{ __('— None —') }}</flux:select.option>
                     @foreach ($this->salesAccountOptions as $acct)
-                        <flux:select.option :value="$acct->id">{{ $acct->code }} — {{ $acct->name }}</flux:select.option>
+                        <flux:select.option :value="$acct->id">{{ $acct->code }} — {{ $acct->displayName() }}</flux:select.option>
                     @endforeach
                 </flux:select>
             </div>

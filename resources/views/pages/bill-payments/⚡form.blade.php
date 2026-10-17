@@ -6,6 +6,7 @@ use App\Enums\BillStatus;
 use App\Enums\BillType;
 use App\Exceptions\Posting\PeriodLockedException;
 use App\Livewire\Concerns\GuardsEditLockedForm;
+use App\Livewire\Concerns\HandlesPeriodLockOverride;
 use App\Models\Account;
 use App\Models\Bill;
 use App\Models\BillPayment;
@@ -26,6 +27,7 @@ use Livewire\Component;
 
 new #[Title('Pay bills')] class extends Component {
     use GuardsEditLockedForm;
+    use HandlesPeriodLockOverride;
 
     public Company $company;
 
@@ -231,7 +233,16 @@ new #[Title('Pay bills')] class extends Component {
 
                 return $payment;
             });
-        } catch (PeriodLockedException|\RuntimeException $e) {
+        } catch (PeriodLockedException $e) {
+            // The rolled-back save mutated the bound model in memory; put it back.
+            $this->payment?->refresh();
+
+            if (! $this->offerPeriodLockOverride($e, 'save')) {
+                $this->addError('applyTable', $e->getMessage());
+            }
+
+            return;
+        } catch (\RuntimeException $e) {
             // The rolled-back save mutated the bound model in memory; put it back.
             $this->payment?->refresh();
             $this->addError('applyTable', $e->getMessage());
@@ -385,14 +396,14 @@ new #[Title('Pay bills')] class extends Component {
             <flux:select wire:model="paid_from_account_id" :label="__('Pay from')" required data-test="payment-from-select">
                 <flux:select.option value="">{{ __('— Select —') }}</flux:select.option>
                 @foreach ($this->bankAccountOptions as $opt)
-                    <flux:select.option :value="$opt->id">{{ $opt->code }} — {{ $opt->name }}@if ($opt->subtype === AccountSubtype::CreditCard) ({{ __('Credit card') }})@endif</flux:select.option>
+                    <flux:select.option :value="$opt->id">{{ $opt->code }} — {{ $opt->displayName() }}@if ($opt->subtype === AccountSubtype::CreditCard) ({{ __('Credit card') }})@endif</flux:select.option>
                 @endforeach
             </flux:select>
 
             <flux:select wire:model.live="payment_method_id" :label="__('Method')" data-test="payment-method-select">
                 <flux:select.option value="">{{ __('— Select —') }}</flux:select.option>
                 @foreach ($this->paymentMethodOptions as $m)
-                    <flux:select.option :value="$m->id">{{ $m->name }}</flux:select.option>
+                    <flux:select.option :value="$m->id">{{ $m->displayName() }}</flux:select.option>
                 @endforeach
             </flux:select>
             <flux:input wire:model="reference" :label="$this->isChequeMethod() ? __('Cheque #') : __('Reference')" :required="$this->isChequeMethod()" :placeholder="$this->isChequeMethod() ? __('e.g. 1023') : ''" data-test="payment-reference-input" />
@@ -485,5 +496,7 @@ new #[Title('Pay bills')] class extends Component {
             <flux:button variant="primary" type="submit" data-test="save-payment-button">{{ __('Save & post') }}</flux:button>
         </div>
     </form>
+
+    <x-period-lock-override :company="$company" :message="$periodLockMessage" />
     @endif
 </section>

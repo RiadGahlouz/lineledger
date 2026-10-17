@@ -140,7 +140,7 @@ new #[Title('Cheque')] class extends Component {
                 @endif
                 &middot;
                 {{ $cheque->cheque_date->toDateString() }} &middot;
-                {{ $cheque->bankAccount->name }}
+                {{ $cheque->bankAccount->displayName() }}
             </flux:subheading>
 
             {{-- The address this cheque was mailed to, as printed on it. --}}
