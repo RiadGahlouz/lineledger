@@ -307,10 +307,9 @@ it('hides the unit price column when the Unit column is toggled off', function (
     expect($render(false))->not->toContain('Price Each');
 });
 
-it('prints invoice in French for Quebec organization when locale is unset', function () {
+it('prints invoice in French for new Quebec organization by default', function () {
     $qcCompany = Company::factory()->create([
         'address_region' => 'QC',
-        'locale' => null,
     ]);
     $qcCompany->members()->attach($this->user, ['role' => CompanyRole::Owner->value]);
     app()->instance('current_company', $qcCompany);
@@ -385,7 +384,7 @@ it('prints both GST and TVQ/QST registration numbers on the invoice footer in th
         ->toContain('123456789 RT0001')
         ->toContain('N° TVQ')
         ->toContain('1234567890 TQ 0001')
-        ->toContain('TVQ 9.975%');
+        ->toContain('TVQ (9,975 %) 9.975%');
 
     // Customer with English locale gets English headers and labels
     $customerEn = Contact::create([
@@ -431,7 +430,7 @@ it('prints both GST and TVQ/QST registration numbers on the invoice footer in th
         ->toContain('123456789 RT0001')
         ->toContain('QST No.')
         ->toContain('1234567890 TQ 0001')
-        ->toContain('QST-QC 9.975%');
+        ->toContain('QST (9.975%) 9.975%');
 
     // When show_tax_number is false, neither tax number prints
     InvoiceSetting::updateOrCreate(

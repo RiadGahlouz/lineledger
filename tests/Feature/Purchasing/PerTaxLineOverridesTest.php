@@ -564,8 +564,8 @@ it('lists both tax rows on a posted cheque with GST and PST', function () {
     $html = Livewire::test('pages::cheques.show', ['company' => $this->company, 'cheque' => $cheque->fresh()])->html();
 
     expect(substr_count($html, 'data-test="cheque-tax-row"'))->toBe(2)
-        ->and($html)->toContain('GST 5.00%')
-        ->and($html)->toContain('PST-BC 7.00%');
+        ->and($html)->toContain('GST (5%) 5.00%')
+        ->and($html)->toContain('PST BC (7%) 7.00%');
 });
 
 it('lists both tax rows on a posted expense with GST and PST', function () {
@@ -585,6 +585,6 @@ it('lists both tax rows on a posted expense with GST and PST', function () {
     $html = Livewire::test('pages::expenses.show', ['company' => $this->company, 'expense' => $expense->fresh()])->html();
 
     expect(substr_count($html, 'data-test="expense-tax-row"'))->toBe(2)
-        ->and($html)->toContain('GST 5.00%')
-        ->and($html)->toContain('PST-BC 7.00%');
+        ->and($html)->toContain('GST (5%) 5.00%')
+        ->and($html)->toContain('PST BC (7%) 7.00%');
 });

@@ -79,6 +79,15 @@ class TaxCode extends Model
     }
 
     /**
+     * The stored name for display. Seeded names are stored in English so
+     * lookups stay stable; the UI translates them (a renamed one passes through).
+     */
+    public function displayName(): string
+    {
+        return __((string) $this->name);
+    }
+
+    /**
      * Codes selectable on purchase documents (bills, expenses, cheques,
      * purchase orders, vendor credits): those flagged purchase-only or both.
      * A sale-only code must never be offered when coding an expense.

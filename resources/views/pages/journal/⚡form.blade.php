@@ -251,7 +251,7 @@ new #[Title('Journal entry')] class extends Component
             ->where('is_active', true)
             ->orderBy('code')
             ->get(['id', 'code', 'name'])
-            ->map(fn (Account $a) => ['value' => $a->id, 'label' => "{$a->code} — {$a->name}", 'code' => (string) $a->code, 'name' => $a->name])
+            ->map(fn (Account $a) => ['value' => $a->id, 'label' => "{$a->code} — {$a->displayName()}", 'code' => (string) $a->code, 'name' => $a->displayName()])
             ->all();
     }
 
@@ -840,7 +840,7 @@ new #[Title('Journal entry')] class extends Component
                     <tbody class="divide-y divide-border">
                         @foreach ($entry->lines as $line)
                             <tr data-test="locked-line-row">
-                                <td class="px-4 py-2">{{ $line->account->code }} — {{ $line->account->name }}</td>
+                                <td class="px-4 py-2">{{ $line->account->code }} — {{ $line->account->displayName() }}</td>
                                 <td class="px-4 py-2 text-muted-foreground">{{ $line->memo }}</td>
                                 <td class="px-4 py-2 text-right font-mono">{{ $line->debit_cents > 0 ? number_format($line->debit_cents / 100, 2) : '' }}</td>
                                 <td class="px-4 py-2 text-right font-mono">{{ $line->credit_cents > 0 ? number_format($line->credit_cents / 100, 2) : '' }}</td>

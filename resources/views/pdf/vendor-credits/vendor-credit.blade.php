@@ -62,7 +62,7 @@
                         <th>{{ __('Credit #') }}</th>
                     </tr>
                     <tr>
-                        <td>{{ $vendorCredit->vendor_credit_date?->format('n/j/Y') }}</td>
+                        <td>{{ \App\Support\Locales::formatDate($vendorCredit->vendor_credit_date) }}</td>
                         <td>{{ $vendorCredit->vendor_credit_no }}</td>
                     </tr>
                 </table>

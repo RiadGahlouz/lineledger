@@ -68,7 +68,7 @@
                         <th>{{ __('PO #') }}</th>
                     </tr>
                     <tr>
-                        <td>{{ $purchaseOrder->po_date?->format('n/j/Y') }}</td>
+                        <td>{{ \App\Support\Locales::formatDate($purchaseOrder->po_date) }}</td>
                         <td>{{ $purchaseOrder->po_no }}</td>
                     </tr>
                 </table>
@@ -105,7 +105,7 @@
         </tr>
         <tr>
             <td>{{ optional($purchaseOrder->terms)->name ?? '—' }}</td>
-            <td>{{ $purchaseOrder->expected_date?->format('n/j/Y') ?? '—' }}</td>
+            <td>{{ \App\Support\Locales::formatDate($purchaseOrder->expected_date) }}</td>
         </tr>
     </table>
 

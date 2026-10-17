@@ -43,14 +43,12 @@ enum TaxForm: string
 
     public function description(): string
     {
-        // Copy follows the CRA form pages (canada.ca), so the settings screen
-        // matches the agency's own description of each return.
         return match ($this) {
-            self::T2 => __('This form serves as a federal, provincial, and territorial corporation income tax return, unless the corporation is located in Quebec or Alberta. If such is the case, you have to file a separate provincial corporate return.'),
-            self::T5013 => __('Partnership Financial Return (T5013FIN). Reports the partnership’s financial information for the fiscal period.'),
-            self::T2125 => __('Use the T2125 form to report either business or professional income and expenses.'),
-            self::T3010 => __('A registered charity must complete Form T3010, Registered Charity Information Return, annually and submit it within six months of the end of its fiscal period.'),
-            self::T1044 => __('For use by a non-profit organization, an agricultural organization, a board of trade or a chamber of commerce to report general information about itself and its income and expenses in a fiscal year.'),
+            self::T2 => __('Annual corporate return. Financial statements are filed as GIFI Schedules 100 (balance sheet) and 125 (income statement).'),
+            self::T5013 => __('Partnership information return. Financial statements use the same GIFI Schedules 100/125, plus a partner income allocation.'),
+            self::T2125 => __('Business/professional income reported on the partner or proprietor’s personal T1, including a capital cost allowance (CCA) schedule.'),
+            self::T3010 => __('Annual return for registered charities, reporting receipted donations, revenue, expenditures, and balance-sheet totals.'),
+            self::T1044 => __('Information return required of many non-profit organizations meeting CRA income or asset thresholds.'),
         };
     }
 

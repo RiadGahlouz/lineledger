@@ -572,7 +572,7 @@ new #[Title('Review document')] class extends Component {
                     <flux:select wire:model="paymentAccountId" :label="__('Paid from')" required data-test="inbox-payment-account">
                         <flux:select.option value="">{{ __('Select an account') }}</flux:select.option>
                         @foreach ($this->paymentAccountOptions as $account)
-                            <flux:select.option :value="$account->id">{{ $account->code }} — {{ $account->name }}</flux:select.option>
+                            <flux:select.option :value="$account->id">{{ $account->code }} — {{ $account->displayName() }}</flux:select.option>
                         @endforeach
                     </flux:select>
                 @endif
@@ -585,7 +585,7 @@ new #[Title('Review document')] class extends Component {
                                 {{ $bankLine->txn_date->toDateString() }} ·
                                 {{ \App\Support\Money::fromCents(abs((int) $bankLine->amount_cents))->format() }} ·
                                 {{ \Illuminate\Support\Str::limit($bankLine->description, 40) }}
-                                @if ($bankLine->account)({{ $bankLine->account->name }})@endif
+                                @if ($bankLine->account)({{ $bankLine->account->displayName() }})@endif
                             </flux:select.option>
                         @endforeach
                     </flux:select>

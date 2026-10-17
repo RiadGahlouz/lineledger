@@ -48,7 +48,7 @@ final class LineTaxBreakdown
                 }
 
                 $rows[$code->id] ??= [
-                    'label' => $code->label(),
+                    'label' => $code->displayName(),
                     'rate' => $code->ratePercent(),
                     'formatted_rate' => $code->formattedRate(),
                     'tax_cents' => 0,

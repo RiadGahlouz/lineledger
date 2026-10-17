@@ -73,7 +73,7 @@
                         <th>{{ $numberLabel }}</th>
                     </tr>
                     <tr>
-                        <td>{{ $bill->bill_date?->format('n/j/Y') }}</td>
+                        <td>{{ \App\Support\Locales::formatDate($bill->bill_date) }}</td>
                         <td>{{ $bill->bill_no }}</td>
                     </tr>
                 </table>
@@ -101,7 +101,7 @@
                         </tr>
                         <tr>
                             <td>{{ optional($bill->terms)->name ?? '—' }}</td>
-                            <td>{{ $bill->due_date?->format('n/j/Y') ?? '—' }}</td>
+                            <td>{{ \App\Support\Locales::formatDate($bill->due_date) }}</td>
                         </tr>
                     </table>
                     @if (filled($bill->vendor_reference))

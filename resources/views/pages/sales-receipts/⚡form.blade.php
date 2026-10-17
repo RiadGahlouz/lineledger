@@ -561,14 +561,14 @@ new #[Title('Sales receipt')] class extends Component {
             <flux:select wire:model="deposit_to_account_id" :label="__('Deposit to')" required data-test="sales-receipt-deposit-select">
                 <flux:select.option value="">{{ __('— Select —') }}</flux:select.option>
                 @foreach ($this->depositToOptions as $opt)
-                    <flux:select.option :value="$opt->id">{{ $opt->code }} — {{ $opt->name }}</flux:select.option>
+                    <flux:select.option :value="$opt->id">{{ $opt->code }} — {{ $opt->displayName() }}</flux:select.option>
                 @endforeach
             </flux:select>
 
             <flux:select wire:model="payment_method_id" :label="__('Payment method')" data-test="sales-receipt-method-select">
                 <flux:select.option value="">{{ __('— Select —') }}</flux:select.option>
                 @foreach ($this->paymentMethodOptions as $m)
-                    <flux:select.option :value="$m->id">{{ $m->name }}</flux:select.option>
+                    <flux:select.option :value="$m->id">{{ $m->displayName() }}</flux:select.option>
                 @endforeach
             </flux:select>
 

@@ -710,7 +710,7 @@ new #[Title('Vendors')] class extends Component
                 <flux:select wire:model="f_default_expense_account_id" :label="__('Default expense account')" :description="__('Pre-fills the account on new bills for this vendor.')">
                     <flux:select.option value="">{{ __('— None —') }}</flux:select.option>
                     @foreach ($this->expenseAccountOptions as $acct)
-                        <flux:select.option :value="$acct->id">{{ $acct->code }} — {{ $acct->name }}</flux:select.option>
+                        <flux:select.option :value="$acct->id">{{ $acct->code }} — {{ $acct->displayName() }}</flux:select.option>
                     @endforeach
                 </flux:select>
 

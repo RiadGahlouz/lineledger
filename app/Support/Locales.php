@@ -90,11 +90,7 @@ final class Locales
             }
         }
 
-        if ($company?->address_region === 'QC') {
-            return 'fr';
-        }
-
-        return self::canonicalize(App::getLocale());
+        return self::canonicalize((string) config('app.default_locale', 'en'));
     }
 
     public static function apply(string $locale): void

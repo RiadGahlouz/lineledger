@@ -113,7 +113,7 @@ new #[Title('Expense')] class extends Component {
                 @endif
                 &middot;
                 {{ $expense->expense_date->toDateString() }} &middot;
-                {{ $expense->paymentAccount->name }}@if ($expense->paymentMethod) &middot; {{ $expense->paymentMethod->name }} @endif
+                {{ $expense->paymentAccount->displayName() }}@if ($expense->paymentMethod) &middot; {{ $expense->paymentMethod->displayName() }} @endif
             </flux:subheading>
             <div class="mt-2 hidden items-center gap-2 lg:flex">
                 @switch($expense->status->value)

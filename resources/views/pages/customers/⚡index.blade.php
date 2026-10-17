@@ -863,7 +863,7 @@ new #[Title('Customers')] class extends Component {
                         <flux:select wire:model="f_preferred_payment_method_id" :label="__('Preferred payment method')" data-test="customer-preferred-method">
                             <flux:select.option value="">{{ __('— None —') }}</flux:select.option>
                             @foreach ($this->paymentMethodOptions as $method)
-                                <flux:select.option :value="$method->id">{{ $method->name }}</flux:select.option>
+                                <flux:select.option :value="$method->id">{{ $method->displayName() }}</flux:select.option>
                             @endforeach
                         </flux:select>
 

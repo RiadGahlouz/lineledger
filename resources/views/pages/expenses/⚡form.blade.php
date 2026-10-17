@@ -524,14 +524,14 @@ new #[Title('Expense')] class extends Component
             <flux:select wire:model.live="payment_account_id" :label="__('Paid from')" :description:trailing="__('Bank and credit-card accounts, plus any account switched on with Use to pay expenses in the Chart of Accounts.')" required data-test="expense-account-select">
                 <flux:select.option value="">{{ __('— Select —') }}</flux:select.option>
                 @foreach ($this->paymentAccounts as $opt)
-                    <flux:select.option :value="$opt->id">{{ $opt->code }} — {{ $opt->name }}</flux:select.option>
+                    <flux:select.option :value="$opt->id">{{ $opt->code }} — {{ $opt->displayName() }}</flux:select.option>
                 @endforeach
             </flux:select>
 
             <flux:select wire:model="payment_method_id" :label="__('Payment method')" data-test="expense-method-select">
                 <flux:select.option value="">{{ __('— None —') }}</flux:select.option>
                 @foreach ($this->paymentMethodOptions as $opt)
-                    <flux:select.option :value="$opt->id">{{ $opt->name }}</flux:select.option>
+                    <flux:select.option :value="$opt->id">{{ $opt->displayName() }}</flux:select.option>
                 @endforeach
             </flux:select>
 

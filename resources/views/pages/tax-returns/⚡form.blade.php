@@ -170,9 +170,9 @@ new #[Title('Tax return')] class extends Component {
 
         $options = $accounts->map(fn (Account $account) => [
             'id' => (int) $account->id,
-            'label' => "{$account->code} — {$account->name}",
+            'label' => "{$account->code} — {$account->displayName()}",
             'code' => (string) $account->code,
-            'name' => $account->name,
+            'name' => $account->displayName(),
         ])->all();
 
         if ($payable) {

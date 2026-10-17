@@ -1307,7 +1307,7 @@ new #[Layout('layouts.onboarding'), Title('Setup your organization')] class exte
                                             <div class="flex items-center justify-between gap-3 px-4 py-2.5">
                                                 <flux:checkbox
                                                     wire:model="selectedAccounts.{{ $row['code'] }}"
-                                                    :label="$row['code'].'  '.$row['name']"
+                                                    :label="$row['code'].'  '.__($row['name'])"
                                                     :disabled="$row['locked']"
                                                 />
                                                 @if ($row['is_system'])

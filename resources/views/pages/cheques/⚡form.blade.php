@@ -951,7 +951,7 @@ new #[Title('Cheque')] class extends Component
             <flux:select wire:model.live="bank_account_id" :label="__('Bank account')" required data-test="cheque-bank-select">
                 <flux:select.option value="">{{ __('— Select —') }}</flux:select.option>
                 @foreach ($this->bankAccounts as $opt)
-                    <flux:select.option :value="$opt->id">{{ $opt->code }} — {{ $opt->name }}</flux:select.option>
+                    <flux:select.option :value="$opt->id">{{ $opt->code }} — {{ $opt->displayName() }}</flux:select.option>
                 @endforeach
             </flux:select>
 

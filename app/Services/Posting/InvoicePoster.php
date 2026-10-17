@@ -25,7 +25,6 @@ use App\Services\Inventory\MovementContext;
 use App\Services\Reconciliation\BankReconciliationLockGuard;
 use App\Services\Tax\TaxPeriodLockGuard;
 use App\Support\Currency;
-use App\Support\Translation\LocalizedNames;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -686,7 +685,7 @@ class InvoicePoster
         $existing = Account::query()
             ->where('company_id', $company->id)
             ->where('subtype', AccountSubtype::Income->value)
-            ->whereIn('name', LocalizedNames::of('Sales Discounts'))
+            ->where('name', 'Sales Discounts')
             ->first();
 
         if ($existing) {
@@ -696,7 +695,7 @@ class InvoicePoster
         return Account::create([
             'company_id' => $company->id,
             'code' => $this->freeAccountCode($company, '4990'),
-            'name' => __('Sales Discounts'),
+            'name' => 'Sales Discounts',
             'subtype' => AccountSubtype::Income,
             'type' => AccountSubtype::Income->type(),
             'normal_balance' => AccountSubtype::Income->type()->normalBalance(),

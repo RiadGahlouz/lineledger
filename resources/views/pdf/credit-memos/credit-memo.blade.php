@@ -74,7 +74,7 @@
                         <th>{{ __('Credit Memo #') }}</th>
                     </tr>
                     <tr>
-                        <td>{{ $creditMemo->credit_memo_date?->format('n/j/Y') }}</td>
+                        <td>{{ \App\Support\Locales::formatDate($creditMemo->credit_memo_date) }}</td>
                         <td>{{ $creditMemo->credit_memo_no }}</td>
                     </tr>
                 </table>
@@ -138,7 +138,7 @@
                     <td>
                         {{ $line->description }}
                         @if ($settings->show_service_date_column && $line->service_date)
-                            <div class="muted" style="font-size: 9px;">{{ __('Service date') }}: {{ $line->service_date->format('n/j/Y') }}</div>
+                            <div class="muted" style="font-size: 9px;">{{ __('Service date') }}: {{ \App\Support\Locales::formatDate($line->service_date) }}</div>
                         @endif
                     </td>
                     @if ($settings->show_tax_column)

@@ -405,7 +405,7 @@ new #[Title('Invoice')] class extends Component {
             ->mapWithKeys(fn (CustomerReceipt $payment) => [(int) $payment->id => __(':no · :date · :method — :amount credit', [
                 'no' => $payment->receipt_no,
                 'date' => $payment->receipt_date->toDateString(),
-                'method' => $payment->paymentMethod?->name ?? __('Payment'),
+                'method' => $payment->paymentMethod?->displayName() ?? __('Payment'),
                 'amount' => number_format($payment->remainingRefundableCents() / 100, 2),
             ])])
             ->all();
@@ -739,7 +739,7 @@ new #[Title('Invoice')] class extends Component {
                                 <span>{{ $application->receipt->receipt_no }}</span>
                                 <span class="text-muted-foreground">{{ $application->receipt->receipt_date->toDateString() }}</span>
                                 @if ($application->receipt->paymentMethod)
-                                    <span class="text-muted-foreground">· {{ $application->receipt->paymentMethod->name }}</span>
+                                    <span class="text-muted-foreground">· {{ $application->receipt->paymentMethod->displayName() }}</span>
                                 @endif
                                 @if ($application->receipt->reference)
                                     <span class="text-muted-foreground">· {{ $application->receipt->reference }}</span>
@@ -769,7 +769,7 @@ new #[Title('Invoice')] class extends Component {
                                     <span>{{ $payment->receipt_no }}</span>
                                     <span class="text-muted-foreground">{{ $payment->receipt_date->toDateString() }}</span>
                                     @if ($payment->paymentMethod)
-                                        <span class="text-muted-foreground">· {{ $payment->paymentMethod->name }}</span>
+                                        <span class="text-muted-foreground">· {{ $payment->paymentMethod->displayName() }}</span>
                                     @endif
                                     @if ($payment->reference)
                                         <span class="text-muted-foreground">· {{ $payment->reference }}</span>

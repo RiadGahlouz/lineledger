@@ -71,7 +71,7 @@ new #[Title('Sales receipt')] class extends Component {
             <flux:subheading>
                 {{ $receipt->contact?->display_name ?? __('Cash sale') }} &middot;
                 {{ $receipt->receipt_date->toDateString() }} &middot;
-                {{ __('Deposited to') }} {{ $receipt->depositToAccount->name }}
+                {{ __('Deposited to') }} {{ $receipt->depositToAccount->displayName() }}
             </flux:subheading>
             <div class="mt-2 flex items-center gap-2">
                 @switch($receipt->status->value)
@@ -125,7 +125,7 @@ new #[Title('Sales receipt')] class extends Component {
         </div>
         <div>
             <flux:text class="text-muted-foreground">{{ __('Method') }}</flux:text>
-            <div>{{ $receipt->paymentMethod?->name ?? '—' }}</div>
+            <div>{{ $receipt->paymentMethod?->displayName() ?? '—' }}</div>
         </div>
         <div>
             <flux:text class="text-muted-foreground">{{ __('Reference') }}</flux:text>
@@ -149,7 +149,7 @@ new #[Title('Sales receipt')] class extends Component {
                 @foreach ($receipt->lines as $line)
                     <tr data-test="sales-receipt-show-line">
                         <td class="px-4 py-2">{{ $line->description }}</td>
-                        <td class="px-4 py-2 text-muted-foreground">{{ $line->account?->code }} — {{ $line->account?->name }}</td>
+                        <td class="px-4 py-2 text-muted-foreground">{{ $line->account?->code }} — {{ $line->account?->displayName() }}</td>
                         <td class="px-4 py-2 text-right font-mono">{{ rtrim(rtrim((string) $line->quantity, '0'), '.') }}</td>
                         <td class="px-4 py-2 text-right font-mono">{{ number_format($line->unit_price_cents / 100, 2) }}</td>
                         <td class="px-4 py-2 text-muted-foreground">

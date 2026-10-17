@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -15,6 +16,8 @@ return new class extends Migration
         Schema::table('companies', function (Blueprint $table) {
             $table->string('locale', 8)->nullable()->after('timezone');
         });
+
+        DB::table('companies')->whereNull('locale')->update(['locale' => 'en']);
 
         Schema::table('contacts', function (Blueprint $table) {
             $table->string('locale', 8)->nullable()->after('currency_code');

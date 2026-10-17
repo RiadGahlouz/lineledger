@@ -6,7 +6,6 @@ use App\Enums\AccountSubtype;
 use App\Models\Account;
 use App\Models\Company;
 use App\Models\PaymentMethod;
-use App\Support\Translation\LocalizedNames;
 
 /**
  * Ensures a company that connects Stripe has the ledger accounts and payment
@@ -45,7 +44,7 @@ final class EnsureStripeAccounts
     {
         $existing = Account::withoutGlobalScopes()
             ->where('company_id', $company->id)
-            ->whereIn('name', LocalizedNames::of($name))
+            ->where('name', $name)
             ->first();
 
         if ($existing !== null) {
@@ -55,7 +54,7 @@ final class EnsureStripeAccounts
         return Account::withoutGlobalScopes()->create([
             'company_id' => $company->id,
             'code' => $this->freeCode($company, $preferredCode),
-            'name' => __($name),
+            'name' => $name,
             'type' => $subtype->type(),
             'subtype' => $subtype,
             'normal_balance' => $subtype->type()->normalBalance(),
@@ -88,7 +87,7 @@ final class EnsureStripeAccounts
     {
         $existing = PaymentMethod::withoutGlobalScopes()
             ->where('company_id', $company->id)
-            ->whereIn('name', LocalizedNames::of(self::METHOD_NAME))
+            ->where('name', self::METHOD_NAME)
             ->first();
 
         if ($existing !== null) {
@@ -97,7 +96,7 @@ final class EnsureStripeAccounts
 
         return PaymentMethod::withoutGlobalScopes()->create([
             'company_id' => $company->id,
-            'name' => __(self::METHOD_NAME),
+            'name' => self::METHOD_NAME,
             'is_cheque' => false,
             'is_active' => true,
         ]);
