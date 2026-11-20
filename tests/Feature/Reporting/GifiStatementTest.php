@@ -14,6 +14,7 @@ beforeEach(function () {
     $this->company = Company::factory()->create(['fiscal_year_start_month' => 1, 'organization_type' => OrganizationType::Corporation->value]);
     $this->user = User::factory()->create();
     $this->company->members()->attach($this->user, ['role' => CompanyRole::Owner->value]);
+    $this->actingAs($this->user);
 
     app()->instance('current_company', $this->company);
 
@@ -56,8 +57,8 @@ it('groups accounts by GIFI line and keeps the balance sheet balanced', function
         ->instance()
         ->report();
 
-    // Bank → GIFI 1001 (current assets), cumulative balance $600.
-    $bankLine = gifiLine($report['bs']['halves'], '1001');
+    // Bank → GIFI 1000 Cash and deposits (current assets), cumulative balance $600.
+    $bankLine = gifiLine($report['bs']['halves'], '1000');
     expect($bankLine)->not->toBeNull()
         ->and($bankLine['amount'])->toBe(60000);
 
@@ -86,7 +87,7 @@ it('surfaces accounts with no GIFI line in the unassigned bucket', function () {
     expect($unassigned)->not->toBeNull()
         ->and($unassigned['amount'])->toBe(50000);
 
-    $cashMembers = collect(gifiLine($report['bs']['halves'], '1001')['accounts'] ?? [])->pluck('id');
+    $cashMembers = collect(gifiLine($report['bs']['halves'], '1000')['accounts'] ?? [])->pluck('id');
     expect($cashMembers)->not->toContain($this->bank->id);
 });
 
@@ -113,7 +114,7 @@ it('ignores reassignment to an unknown GIFI code', function () {
     Livewire::test('pages::reports.gifi', ['company' => $this->company])
         ->call('reassign', $this->bank->id, '9999');
 
-    expect($this->bank->fresh()->gifi_code)->toBe('1001');
+    expect($this->bank->fresh()->gifi_code)->toBe('1000');
 });
 
 it('is available to Canadian companies and hidden from others', function () {

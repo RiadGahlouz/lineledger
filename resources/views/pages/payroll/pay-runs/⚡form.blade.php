@@ -5,6 +5,7 @@ use App\Actions\Payroll\SavePayRun;
 use App\Enums\AccountSubtype;
 use App\Enums\PayBasis;
 use App\Enums\PayRunStatus;
+use App\Exceptions\Payroll\MissingPayrollConstantsException;
 use App\Livewire\Concerns\GuardsEditLockedForm;
 use App\Models\Account;
 use App\Models\Company;
@@ -17,6 +18,7 @@ use App\Support\Payroll\EarningTypeCatalogue;
 use Carbon\CarbonImmutable;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -58,7 +60,7 @@ new #[Title('Pay run')] class extends Component {
 
         abort_unless($company->usesPayroll(), 404);
 
-        $this->bank_account_id = Account::query()->where('subtype', AccountSubtype::Bank->value)->orderBy('code')->value('id');
+        $this->bank_account_id = Account::query()->where('subtype', AccountSubtype::Bank->value)->where('is_active', true)->orderBy('code')->value('id');
         $this->payroll_schedule_id = PayrollSchedule::query()->where('is_active', true)->value('id');
 
         $enrolled = $this->enrolledEmployees();
@@ -243,7 +245,16 @@ new #[Title('Pay run')] class extends Component {
     #[Computed]
     public function bankAccounts()
     {
-        return Account::query()->where('subtype', AccountSubtype::Bank->value)->where('is_active', true)->orderBy('code')->get();
+        return Account::query()
+            ->where(function ($q) {
+                $q->where(fn ($inner) => $inner->where('subtype', AccountSubtype::Bank->value)->where('is_active', true));
+
+                if ($this->bank_account_id) {
+                    $q->orWhere('id', $this->bank_account_id);
+                }
+            })
+            ->orderBy('code')
+            ->get();
     }
 
     public function hourly(string $basis): bool
@@ -317,11 +328,11 @@ new #[Title('Pay run')] class extends Component {
     {
         // Field validation throws a ValidationException Livewire surfaces inline.
         $validated = $this->validate([
-            'payroll_schedule_id' => ['required', 'integer', 'exists:payroll_schedules,id'],
+            'payroll_schedule_id' => ['required', 'integer', Rule::exists('payroll_schedules', 'id')->where('company_id', $this->company->id)],
             'period_start_date' => ['required', 'date'],
             'period_end_date' => ['required', 'date', 'after_or_equal:period_start_date'],
             'pay_date' => ['required', 'date'],
-            'bank_account_id' => ['nullable', 'integer', 'exists:accounts,id'],
+            'bank_account_id' => ['nullable', 'integer', Rule::exists('accounts', 'id')->where('company_id', $this->company->id)->where('subtype', AccountSubtype::Bank->value)],
         ]);
 
         $lines = $this->selectedLines();
@@ -355,7 +366,16 @@ new #[Title('Pay run')] class extends Component {
             return;
         }
 
-        $calculate->calculate($run);
+        try {
+            $calculate->calculate($run);
+        } catch (MissingPayrollConstantsException $e) {
+            // No tax table covers the pay date (e.g. a new year's tables aren't
+            // installed yet). The draft is saved: land on it, where the reason stays shown.
+            Flux::toast(variant: 'danger', text: $e->userMessage());
+            $this->redirectRoute('pay-runs.show', ['company' => $this->company, 'payRun' => $run], navigate: true);
+
+            return;
+        }
 
         Flux::toast(variant: 'success', text: __('Pay run calculated.'));
         $this->redirectRoute('pay-runs.show', ['company' => $this->company, 'payRun' => $run], navigate: true);

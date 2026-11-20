@@ -1,8 +1,11 @@
 <?php
 
+use App\Actions\Payroll\SaveEmployeePayrollProfile;
+use App\Actions\Payroll\SavePayRun;
 use App\Actions\Sales\SaveInvoice;
 use App\Enums\AccountSubtype;
 use App\Enums\CompanyRole;
+use App\Enums\Section;
 use App\Models\Account;
 use App\Models\BankReconciliation;
 use App\Models\Company;
@@ -13,11 +16,19 @@ use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\PaymentMethod;
+use App\Models\PayrollSchedule;
+use App\Models\PayRun;
 use App\Models\User;
+use App\Services\Payroll\CalculatePayRun;
 use App\Services\Posting\InvoicePoster;
+use App\Services\Posting\PayRunPoster;
 use App\Services\Posting\ReceiptPoster;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Testing\TestResponse;
+use Livewire\Livewire;
+use Livewire\Mechanisms\HandleRequests\EndpointResolver;
+use Symfony\Component\Mailer\SentMessage;
 use Tests\TestCase;
 
 /*
@@ -67,6 +78,23 @@ function something()
 }
 
 /**
+ * An account for exercising who can pay an expense: Expense form, inbox review
+ * and the MCP expense tool all read the same eligibility rule.
+ */
+function expensePaidFromAccount(string $code, string $name, AccountSubtype $subtype, bool $forExpenses = false, bool $system = false): Account
+{
+    return Account::create([
+        'code' => $code,
+        'name' => $name,
+        'subtype' => $subtype->value,
+        'type' => $subtype->type()->value,
+        'normal_balance' => $subtype->type()->normalBalance()->value,
+        'use_for_expenses' => $forExpenses,
+        'is_system' => $system,
+    ]);
+}
+
+/**
  * Bind a company + API key the way AuthenticateApiKey would, so an MCP tool's
  * handle() can be invoked directly in a test. Reloads the company so DB-default
  * columns (e.g. fiscal_year_start_month) are populated. An empty abilities array
@@ -104,6 +132,27 @@ function editLockMember(Company $company, CompanyRole $role = CompanyRole::Accou
 {
     $user = User::factory()->create();
     $company->members()->attach($user, ['role' => $role->value]);
+
+    return $user;
+}
+
+/**
+ * A Custom-role member of $company holding only the given sections — for tests
+ * of what one section's members can and cannot reach.
+ *
+ * @param  list<Section>  $sections
+ */
+function customSectionsMember(Company $company, array $sections): User
+{
+    $user = User::factory()->create(['email_verified_at' => now()]);
+
+    // Through Eloquent, so the `sections` array cast encodes the JSON (pivot
+    // attach() would bypass the cast and double-encode it).
+    $company->memberships()->create([
+        'user_id' => $user->id,
+        'role' => CompanyRole::Custom,
+        'sections' => array_map(fn (Section $section) => $section->value, $sections),
+    ]);
 
     return $user;
 }
@@ -218,4 +267,230 @@ function claimLinesForReconciliation(BankReconciliation $rec, JournalEntry $entr
     ]);
 
     $rec->forceFill(['marked_line_ids' => array_values(array_unique([...$rec->markedLineIds(), ...$ids]))])->save();
+}
+
+/**
+ * Every email the array mailer has sent in this test, HTML and plain-text parts
+ * together with entities decoded, for asserting where the links in them point.
+ */
+function sentMailText(): string
+{
+    return app('mail.manager')->mailer('array')->getSymfonyTransport()->messages()
+        ->map(fn (SentMessage $sent): string => html_entity_decode(
+            $sent->getOriginalMessage()->getHtmlBody().' '.$sent->getOriginalMessage()->getTextBody(),
+            ENT_QUOTES | ENT_HTML5,
+        ))
+        ->implode("\n");
+}
+
+/**
+ * All the text of a .docx — body, headers and footers — tags stripped, for the
+ * statutory accounts Word export tests.
+ */
+function docxText(string $bytes): string
+{
+    $path = tempnam(sys_get_temp_dir(), 'docx');
+    file_put_contents($path, $bytes);
+    $zip = new ZipArchive;
+    $zip->open($path);
+    $xml = '';
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $name = $zip->getNameIndex($i);
+        if (preg_match('#^word/(document|header\d*|footer\d*)\.xml$#', $name)) {
+            $xml .= ' '.$zip->getFromName($name);
+        }
+    }
+    $zip->close();
+    @unlink($path);
+
+    // One space per paragraph, none between runs, so "5" + "th" reads "5th".
+    $xml = preg_replace('#</w:p>#', ' ', $xml);
+
+    return preg_replace('/\s+/', ' ', html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1));
+}
+
+/**
+ * Open $url as $user and return the snapshot of $component on that page: what
+ * the browser keeps, and can post back to Livewire's update endpoint long after
+ * the page loaded. Shared by the Livewire re-authorization tests.
+ *
+ * @param  array<string, mixed>  $session
+ */
+function livewireReplayCapture(User $user, string $url, string $component, array $session = []): string
+{
+    $html = test()->actingAs($user)->withSession($session)->get($url)->assertOk()->getContent();
+
+    livewireReplayEndRequest();
+
+    return livewireReplaySnapshotIn($html, $component);
+}
+
+/**
+ * The snapshot of $component in rendered HTML: a full page, or the
+ * effects.html of an update response.
+ */
+function livewireReplaySnapshotIn(string $html, string $component): string
+{
+    preg_match_all('/wire:snapshot="([^"]+)"/', $html, $matches);
+
+    foreach ($matches[1] as $raw) {
+        $snapshot = html_entity_decode($raw, ENT_QUOTES | ENT_HTML5);
+
+        if ((json_decode($snapshot, true)['memo']['name'] ?? null) === $component) {
+            return $snapshot;
+        }
+    }
+
+    throw new RuntimeException("No {$component} snapshot in the HTML.");
+}
+
+/**
+ * Post $snapshot back to Livewire's update endpoint the way the browser does
+ * (a JSON body and the X-Livewire header), with optional property updates and
+ * method calls given as [method, ...params]. Unlike Livewire::test(), which
+ * switches route middleware off, this runs the endpoint for real, so Livewire's
+ * persistent route middleware and BindCurrentCompanyHook both apply.
+ *
+ * @param  array<int, array<int, mixed>>  $calls
+ * @param  array<string, mixed>  $updates
+ */
+function livewireReplay(string $snapshot, array $calls = [], array $updates = []): TestResponse
+{
+    $payload = ['components' => [[
+        'snapshot' => $snapshot,
+        'updates' => (object) $updates,
+        'calls' => array_map(fn (array $call): array => [
+            'path' => '',
+            'method' => array_shift($call),
+            'params' => $call,
+        ], $calls),
+    ]]];
+
+    $response = test()->call('POST', EndpointResolver::updatePath(), [], [], [], [
+        'CONTENT_TYPE' => 'application/json',
+        'HTTP_X_LIVEWIRE' => '1',
+    ], json_encode($payload));
+
+    livewireReplayEndRequest();
+
+    return $response;
+}
+
+/**
+ * Reset what a real request would not carry over. A test's requests share one
+ * application, so drop the bound company and Livewire's per-request state (the
+ * last route its persistent middleware ran for, the models it resolved), as
+ * Livewire::test() does after each render.
+ */
+function livewireReplayEndRequest(): void
+{
+    app()->forgetInstance('current_company');
+
+    Livewire::flushState();
+}
+
+/**
+ * Save, calculate and post a one-employee pay run, for the year-end filing tests
+ * (RL-1 slips, Record of Employment).
+ */
+function payrollFilingPostRun(PayrollSchedule $schedule, Contact $employee, string $periodStart, string $periodEnd, string $payDate): PayRun
+{
+    $run = app(SavePayRun::class)->handle([
+        'payroll_schedule_id' => $schedule->id,
+        'period_start_date' => $periodStart,
+        'period_end_date' => $periodEnd,
+        'pay_date' => $payDate,
+        'lines' => [['contact_id' => $employee->id]],
+    ]);
+    app(CalculatePayRun::class)->calculate($run);
+    app(PayRunPoster::class)->post($run->fresh());
+
+    return $run->fresh(['lines']);
+}
+
+/**
+ * XPath over a generated filing XML document (no namespaces), for the filing tests.
+ */
+function payrollFilingXpath(string $xml): DOMXPath
+{
+    $doc = new DOMDocument;
+    expect($doc->loadXML($xml))->toBeTrue();
+
+    return new DOMXPath($doc);
+}
+
+/**
+ * Validate an XML document against an official XSD; returns libxml's messages,
+ * empty when the document is valid.
+ *
+ * @return array<int, string>
+ */
+function payrollFilingSchemaErrors(string $xml, string $xsdPath): array
+{
+    $previous = libxml_use_internal_errors(true);
+    libxml_clear_errors();
+
+    $doc = new DOMDocument;
+    $valid = $doc->loadXML($xml) && $doc->schemaValidate($xsdPath);
+    $errors = array_map(fn (LibXMLError $e): string => trim($e->message), libxml_get_errors());
+
+    libxml_clear_errors();
+    libxml_use_internal_errors($previous);
+
+    return $valid ? [] : ($errors !== [] ? $errors : ['The document did not validate.']);
+}
+
+/**
+ * A salaried Quebec employee on the given schedule, optionally with standing pay
+ * items (recurring earnings, deductions or employer-paid benefits), for the RL-1
+ * filing tests.
+ *
+ * @param  array<int, array<string, mixed>>  $recurringItems
+ */
+function payrollFilingQuebecEmployee(PayrollSchedule $schedule, int $annualSalaryCents, array $recurringItems = [], string $name = 'Québec Employé'): Contact
+{
+    [$first, $last] = explode(' ', $name, 2) + [1 => ''];
+    $employee = Contact::create(['display_name' => $name, 'first_name' => $first, 'last_name' => $last, 'is_employee' => true]);
+
+    app(SaveEmployeePayrollProfile::class)->handle([
+        'contact_id' => $employee->id,
+        'sin' => '046454286',
+        'hire_date' => '2025-01-06',
+        'province_of_employment' => 'QC',
+        'pay_basis' => 'salary',
+        'annual_salary_cents' => $annualSalaryCents,
+        'payroll_schedule_id' => $schedule->id,
+        'td1_federal_claim_cents' => 1645200,
+        'td1_provincial_claim_cents' => 1895200,
+        'vacation_policy' => 'accrue',
+        'vacation_rate_bp' => 400,
+        'recurring_items' => $recurringItems,
+    ]);
+
+    return $employee;
+}
+
+/**
+ * A QuickBooks Desktop Account Listing shaped like the one in #229: no account
+ * numbers, and "Domian Name Reg/Renew" both at the top level and under
+ * Pass Through Expense:Hosting. Returns the CSV body, or with $asFile the path
+ * of a temp file holding it.
+ */
+function quickBooksSubAccountListingCsv(bool $asFile = false): string
+{
+    $csv = "Account,Type,Accnt. #,Description\n"
+        ."Domian Name Reg/Renew,Expense,,\n"
+        ."Pass Through Expense,Expense,,\n"
+        ."Pass Through Expense:Hosting,Expense,,\n"
+        ."Pass Through Expense:Hosting:Domian Name Reg/Renew,Expense,,\n"
+        ."Pass Through Expense:Hosting:Email Hosting,Expense,,\n";
+
+    if (! $asFile) {
+        return $csv;
+    }
+
+    $path = tempnam(sys_get_temp_dir(), 'qbsub').'.csv';
+    file_put_contents($path, $csv);
+
+    return $path;
 }

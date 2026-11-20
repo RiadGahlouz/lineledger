@@ -17,7 +17,7 @@ new #[Title('Documentation — Banking')] class extends Component {}; ?>
         {{-- ───────────────────────── Bank register ───────────────────────── --}}
         <flux:heading size="lg" class="mt-8">{{ __('The bank register') }}</flux:heading>
         <flux:text>
-            {{ __('The register is a chequebook-style view of one bank account: every transaction that hit it, in date order, with payments and deposits in separate columns. Use it to confirm a payment cleared, drill into an entry, or spot a duplicate before you reconcile. Open Banking → Bank register from the sidebar and pick an account from the Account selector at the top. The Memo column shows each document’s own memo — “Deposit: August 2026 Interac Deposits” rather than a bare “Deposit” — so you can tell which row is which without opening it. The Actions menu in the top-right is your gateway to the rest of Banking — Reconcile, Import statement, and Bank rules all open from there.') }}
+            {{ __('The register is a chequebook-style view of one bank account: every transaction that hit it, newest first, with payments and deposits in separate columns and a running Balance after each line. Click any column heading to sort by it, and click again to reverse it; the Balance column always reflects date order, so it stays right however you sort. Long registers show 50 rows a page. Use it to confirm a payment cleared, drill into an entry, or spot a duplicate before you reconcile. Open Banking → Bank register from the sidebar and pick an account from the Account selector at the top. The Memo column shows each document’s own memo — “Deposit: August 2026 Interac Deposits” rather than a bare “Deposit” — so you can tell which row is which without opening it. The Actions menu in the top-right is your gateway to the rest of Banking — Reconcile, Import statement, and Bank rules all open from there.') }}
         </flux:text>
 
         <x-docs.figure
@@ -198,6 +198,10 @@ new #[Title('Documentation — Banking')] class extends Component {}; ?>
 
         <x-docs.callout type="note" heading="{{ __('Voided cheques are left off') }}">
             {{ __('A voided cheque was never cashed, so it is not on your statement — the reconcile list leaves out both the voided cheque and the reversing entry the void posted. They cancel each other out in the books. The one exception: if either half was already ticked or cleared before the void, both stay on the list so you can settle them. Statement import will not match a voided cheque or its reversal either, and the Cash Flow Forecast does not count them as outstanding.') }}
+        </x-docs.callout>
+
+        <x-docs.callout type="note" heading="{{ __('Foreign-currency accounts reconcile in their own currency') }}">
+            {{ __('A bank or credit-card account in a foreign currency is reconciled in that currency, the one its statements are in. Enter the ending balance, service charge and interest as the statement shows them: every transaction is listed and added up at its foreign amount, not its home value, and statement import matches on that amount too. The service charge and interest are posted at their home value at that day’s exchange rate, like any foreign transaction, and the bank register shows the account in its own currency as well. A transaction recorded before foreign amounts were kept may have none. A line added from For Review or a statement import, or a service charge or interest from an earlier reconciliation, counts at the amount it was booked at, which was the statement’s own figure. Any other counts as 0.00 and carries a warning sign, so you can see why it doesn’t move the balance; edit and save such a customer payment or bill payment to record its foreign amount.') }}
         </x-docs.callout>
 
         <x-docs.callout type="warning" heading="{{ __('Completing a reconciliation locks the transactions you ticked') }}">

@@ -80,7 +80,7 @@ new #[Title('Documentation — Accounting')] class extends Component {}; ?>
             <li>{{ __('With multi-currency on, a Bank or Credit Card account also offers a Currency. It is fixed once the account has activity.') }}</li>
             <li>{{ __('For most balance-sheet accounts you can enter an Opening balance (optional) and the As of date it starts from — see Opening balances below.') }}</li>
             <li>{{ __('Switch on Include in transfers if this account should appear in the From / To dropdowns when recording a transfer (a line of credit, for example). Bank and credit card accounts are always included.') }}</li>
-            <li>{{ __('On a current, long-term, or other liability, switch on Use to pay expenses if the account should appear under Paid from on an expense — a Shareholder Loan, for example, so a cost an owner paid personally posts straight to what the business owes them. Bank and credit card accounts are always offered; system accounts such as the payroll payables cannot be switched on.') }}</li>
+            <li>{{ __('On a current asset, or a current, long-term, or other liability, switch on Use to pay expenses if the account should appear under Paid from on an expense — a petty-cash account, or a Shareholder Loan so a cost an owner paid personally posts straight to what the business owes them. Bank and credit card accounts are always offered; system accounts such as the payroll payables cannot be switched on.') }}</li>
             <li>{{ __('Leave Active on and select Save.') }}</li>
         </ol>
 
@@ -186,6 +186,7 @@ new #[Title('Documentation — Accounting')] class extends Component {}; ?>
             <li>{{ __('On the first line, choose an Account. If it is your Accounts Receivable or Accounts Payable account, a “Search or add a customer…” (or vendor) box appears beneath it — pick the name the amount belongs to, or type a new name and add them on the spot.') }}</li>
             <li>{{ __('The Tax code fills in from the account’s default. It is a reporting tag only — it never calculates or changes an amount — so clear it or change it freely.') }}</li>
             <li>{{ __('Enter either a Debit or a Credit amount, plus an optional Line memo. Every amount cell doubles as a calculator: type 1250/12 or 400*1.05 and press Enter to commit the result.') }}</li>
+            <li>{{ __('If the account is in a foreign currency — a foreign bank or credit-card account, or a currency’s receivable or payable account — a row opens under the line for the Debit or Credit in that currency and its Exchange rate, filled in for the entry date. The line’s own Debit and Credit then show the home-currency equivalent. See') }} <a class="underline" href="{{ route('docs.multi-currency') }}" wire:navigate>{{ __('Multi-currency') }}</a>{{ __('.') }}</li>
             <li>{{ __('If your organization tracks Classes, Locations, or Funds (Settings → Organizations), a second row of selectors appears under each line.') }}</li>
             <li>{{ __('Select Add line and enter the offsetting amount on another account. The Totals row reads Enter amounts until you type one, then Balanced when debits equal credits, or “Out of balance by” the difference.') }}</li>
             <li>{{ __('Select Post entry to finalize it, or Save draft to keep working on it later.') }}</li>

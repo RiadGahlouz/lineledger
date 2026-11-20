@@ -203,7 +203,7 @@ new #[Title('Sales Order')] class extends Component
             // default — never overwriting one already on the line, so item
             // and contact defaults keep their existing precedence.
             if (str_ends_with($key, '.account_id') && $value && empty($this->lines[$i]['tax_code_id'])) {
-                $this->lines[$i]['tax_code_id'] = Account::find($value)?->default_tax_code_id;
+                $this->lines[$i]['tax_code_id'] = TaxCode::defaultForSales(Account::find($value)?->default_tax_code_id);
             }
 
             $this->recalcLine($i);
@@ -221,8 +221,7 @@ new #[Title('Sales Order')] class extends Component
                 $this->lines[$i]['account_id'] = $item->income_account_id;
                 $this->lines[$i]['description'] = $item->description ?? $item->name;
                 $this->lines[$i]['unit_price'] = Money::fromCents((int) $item->default_price_cents)->toDecimalString();
-                $this->lines[$i]['tax_code_id'] = $item->default_tax_code_id;
-                $this->lines[$i]['secondary_tax_code_id'] = $item->default_secondary_tax_code_id;
+                [$this->lines[$i]['tax_code_id'], $this->lines[$i]['secondary_tax_code_id']] = TaxCode::defaultsForSales($item->default_tax_code_id, $item->default_secondary_tax_code_id);
             }
         }
 
@@ -270,10 +269,12 @@ new #[Title('Sales Order')] class extends Component
             $this->terms_id = $contact->default_terms_id;
         }
 
-        if ($contact?->default_tax_code_id) {
+        $defaultTaxCodeId = TaxCode::defaultForSales($contact?->default_tax_code_id);
+
+        if ($defaultTaxCodeId !== null) {
             foreach ($this->lines as $i => $line) {
                 if (! $line['tax_code_id']) {
-                    $this->lines[$i]['tax_code_id'] = $contact->default_tax_code_id;
+                    $this->lines[$i]['tax_code_id'] = $defaultTaxCodeId;
                     $this->recalcLine($i);
                 }
             }
@@ -466,7 +467,7 @@ new #[Title('Sales Order')] class extends Component
     #[Computed]
     public function taxCodeOptions()
     {
-        return TaxCode::query()->where('is_active', true)->orderBy('code')->get();
+        return TaxCode::query()->offeredForSales(TaxCode::idsOnLines($this->lines))->orderBy('code')->get();
     }
 
     #[Computed]
@@ -741,7 +742,7 @@ new #[Title('Sales Order')] class extends Component
                     </tr>
                     @forelse ($this->taxBreakdown as $taxRow)
                         <tr data-test="sales-order-tax-row">
-                            <td colspan="{{ 8 + $this->dimensionColumns }}" class="px-2 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ LineTaxBreakdown::formatRate($taxRow['rate']) }}%</td>
+                            <td colspan="{{ 8 + $this->dimensionColumns }}" class="px-2 py-2 text-right font-medium">{{ LineTaxBreakdown::labelWithRate($taxRow['label'], $taxRow['rate']) }}</td>
                             <td class="px-2 py-2 text-right font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</td>
                             <td></td>
                         </tr>
@@ -764,7 +765,7 @@ new #[Title('Sales Order')] class extends Component
             <div class="space-y-1 border-t border-border bg-muted px-3 py-3 text-sm lg:hidden">
                 <div class="flex justify-between"><span class="font-medium">{{ __('Subtotal') }}</span><span class="font-mono">{{ number_format($this->totals['subtotal'] / 100, 2) }}</span></div>
                 @forelse ($this->taxBreakdown as $taxRow)
-                    <div class="flex justify-between"><span class="font-medium">{{ $taxRow['label'] }} {{ LineTaxBreakdown::formatRate($taxRow['rate']) }}%</span><span class="font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</span></div>
+                    <div class="flex justify-between"><span class="font-medium">{{ LineTaxBreakdown::labelWithRate($taxRow['label'], $taxRow['rate']) }}</span><span class="font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</span></div>
                 @empty
                     <div class="flex justify-between"><span class="font-medium">{{ __('Tax') }}</span><span class="font-mono">{{ number_format($this->totals['tax'] / 100, 2) }}</span></div>
                 @endforelse

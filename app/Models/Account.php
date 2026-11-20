@@ -27,6 +27,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'type',
     'subtype',
     'gifi_code',
+    'statutory_line',
+    'statutory_label',
     'default_tax_code_id',
     'normal_balance',
     'currency_code',
@@ -150,10 +152,13 @@ class Account extends Model
 
     /**
      * Accounts a pay-now expense can be paid from: every bank and credit-card
-     * account, plus any liability the user has switched on with "Use to pay
-     * expenses" (a Shareholder Loan when an owner pays personally). The subtype
+     * account, plus any the user has switched on with "Use to pay expenses" (a
+     * Shareholder Loan when an owner pays personally, or petty cash). The subtype
      * and is_system checks repeat what SaveAccount enforces, so a flag left on
      * an account later retyped or seeded as a system account is ignored.
+     *
+     * The Expense form, inbox review and the MCP expense tool all answer "what
+     * can pay for this?" with this scope, so they cannot disagree.
      *
      * @param  Builder<Account>  $query
      * @return Builder<Account>
@@ -175,6 +180,53 @@ class Account extends Model
                         ->where('is_system', false);
                 });
         });
+    }
+
+    /**
+     * Accounts a transfer can move money between: every bank and credit-card
+     * account, plus any the user has switched on with "Include in transfers" (a
+     * line of credit, say). AR and AP stay out even when flagged: a transfer has no
+     * contact, and a control-account line without one breaks the GL-driven reports.
+     *
+     * @param  Builder<Account>  $query
+     * @return Builder<Account>
+     */
+    public function scopeTransferAccounts(Builder $query): Builder
+    {
+        return $query->where(function (Builder $q) {
+            $q->whereIn('subtype', [AccountSubtype::Bank->value, AccountSubtype::CreditCard->value])
+                ->orWhere(function (Builder $optedIn) {
+                    $optedIn
+                        ->where('use_in_transfers', true)
+                        ->whereNotIn('subtype', [AccountSubtype::AccountsReceivable->value, AccountSubtype::AccountsPayable->value]);
+                });
+        });
+    }
+
+    /**
+     * Accounts a bill can be paid from: a bank or credit card. The bill payment form
+     * and the API share this. Statement lines and QuickBooks imports write through the
+     * Action and can use others.
+     *
+     * @param  Builder<Account>  $query
+     * @return Builder<Account>
+     */
+    public function scopeBillPaymentSources(Builder $query): Builder
+    {
+        return $query->whereIn('subtype', [AccountSubtype::Bank->value, AccountSubtype::CreditCard->value]);
+    }
+
+    /**
+     * Accounts a customer's money can land in: a bank or Undeposited Funds. The receipt
+     * and sales receipt forms and the API share this. Stripe receipts and QuickBooks
+     * imports write through the Action and can use others, such as a clearing account.
+     *
+     * @param  Builder<Account>  $query
+     * @return Builder<Account>
+     */
+    public function scopePaymentDepositAccounts(Builder $query): Builder
+    {
+        return $query->whereIn('subtype', [AccountSubtype::Bank->value, AccountSubtype::UndepositedFunds->value]);
     }
 
     public function scopeSelectableForItemAccount(Builder $query): Builder

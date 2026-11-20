@@ -359,7 +359,11 @@ new #[Title('Documentation — Reports')] class extends Component {}; ?>
 
         <flux:heading size="md" class="mt-6">{{ __('1099 Summary (US only)') }}</flux:heading>
         <flux:text>
-            {{ __('For US organizations, the 1099 Summary totals what you paid each vendor you flagged for 1099 tracking over a calendar year — counting posted bill payments, cheques, and pay-now expenses, but not refunds. Vendors under the $600 reporting threshold are hidden by default, with a toggle to show everyone. Amounts report as nonemployee compensation (1099-NEC Box 1). Export to CSV, Excel, or PDF. To use it, flag the vendor and record their Tax ID on the vendor record. The report does not appear for Canadian organizations.') }}
+            {{ __('For US organizations, the 1099 Summary totals what you paid each vendor you flagged for 1099 tracking over a calendar year — counting posted bill payments, cheques, and pay-now expenses, but not refunds or card payments. Vendors under the year’s IRS reporting threshold are hidden by default, with a toggle to show everyone. The threshold follows the year the payments were made in: $600 for payments made before 2026, $2,000 for payments made in 2026, and from 2027 an amount the IRS adjusts for inflation. Amounts report as nonemployee compensation (1099-NEC Box 1). Export to CSV, Excel, or PDF. To use it, flag the vendor and record their Tax ID on the vendor record. The report does not appear for Canadian organizations.') }}
+        </flux:text>
+
+        <flux:text>
+            {{ __('Card and payment-app payments are left out because the card company or app reports them to the IRS on Form 1099-K, so they don’t belong on a 1099-NEC. That covers a bill payment or expense paid from a credit card account, and one made with a payment method marked Card or payment app, such as a debit card or PayPal paid from your bank account. Credit card is marked for you; mark any other card or app method under Settings → Lists → Payment methods. Cheques, ACH and wire payments always count.') }}
         </flux:text>
 
         {{-- ─────────────────── Sales & purchases analysis ─────────────────── --}}
@@ -418,6 +422,9 @@ new #[Title('Documentation — Reports')] class extends Component {}; ?>
             <li>{{ __('T3010 Summary (registered charities) — the receipted donations, revenue, expenditures, and balance-sheet totals you need for the annual charity information return.') }}</li>
         </ul>
         <flux:text>
+            {{ __('The GIFI Statement’s Download menu also offers a GIFI file for tax software (.gfi): the standard file that DT Max, Taxprep, ProFile, TaxCycle, and Pro Tax import Schedule 100 and Schedule 125 from, so the figures arrive on the T2 without retyping. Set the period to the fiscal year, and give every account under Unassigned accounts a GIFI line first — the file is refused while one is missing, because the return would not balance. Amounts keep their cents, which the tax software rounds to dollars, and totals such as Total assets are left for it to compute. Notes to the financial statements are not included; add them in the tax software.') }}
+        </flux:text>
+        <flux:text>
             {{ __('Payroll has its own set of reports — the payroll register, PD7A and Revenu Québec remittances, T4, T4A and RL-1 slips, the Record of Employment, and more — under the Employees & Payroll group when payroll is turned on. See the') }}
             <a class="underline" href="{{ route('docs.payroll') }}" wire:navigate>{{ __('Payroll') }}</a>{{ __(' guide for those.') }}
         </flux:text>
@@ -455,7 +462,7 @@ new #[Title('Documentation — Reports')] class extends Component {}; ?>
         />
 
         <flux:text>
-            {{ __('Inside a group you can rename or retype the combined lines and organize them into custom sections, and switch on By company to see each member’s figures beside the combined total — on the Cash Flow Statement that includes each member’s net cash per activity and its beginning and ending cash. Combined statements export to CSV, Excel, and PDF. A group is a straight roll-up, not a full consolidation — there are no intercompany eliminations, so balances owed between member organizations are not removed. Every organization in a group must use the same currency. A group is visible to anyone who belongs to all of its members, so a colleague on every member organization sees the combined reports too (badged Shared); only the person who created it can edit it.') }}
+            {{ __('Inside a group you can rename or retype the combined lines and organize them into custom sections, and switch on By company to see each member’s figures beside the combined total — on the Cash Flow Statement that includes each member’s net cash per activity and its beginning and ending cash. Combined statements export to CSV, Excel, and PDF. A group is a straight roll-up, not a full consolidation — there are no intercompany eliminations, so balances owed between member organizations are not removed. Every organization in a group must use the same currency. A group is visible to anyone who can open Reports in all of its members, so a colleague with Reports access on every member organization sees the combined reports too (badged Shared); only the person who created it can edit it, and only while they can still open Reports in every member. A deleted organization drops out of every group it was in.') }}
         </flux:text>
 
         {{-- ─────────────────── Saving, emailing and scheduling ─────────────────── --}}
@@ -506,7 +513,7 @@ new #[Title('Documentation — Reports')] class extends Component {}; ?>
         />
 
         <x-docs.callout type="note">
-            {{ __('A scheduled report or group shows a badge such as “Scheduled · monthly”; select the × beside it to remove the schedule. A schedule ends itself after its End date or Number of sends, and pauses — badged Schedule paused — if the report can no longer be emailed, for example because the feature it reports on was turned off. Sends go out with the daily scheduled tasks each morning, so on a self-hosted install the scheduler and queue worker must be running — see') }}
+            {{ __('A scheduled report or group shows a badge such as “Scheduled · monthly”; select the × beside it to remove the schedule. A schedule ends itself after its End date or Number of sends, and pauses — badged Schedule paused — if the report can no longer be emailed, for example because the feature it reports on was turned off, or because the person who scheduled it was removed from the organization, had their account disabled, or lost access to Reports. Sends go out with the daily scheduled tasks each morning, so on a self-hosted install the scheduler and queue worker must be running — see') }}
             <a class="underline" href="{{ route('docs.self-hosting') }}" wire:navigate>{{ __('Self-hosting') }}</a>{{ __('.') }}
         </x-docs.callout>
 

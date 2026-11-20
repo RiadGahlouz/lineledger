@@ -8,6 +8,7 @@ use App\Models\BankStatementLine;
 use App\Models\Company;
 use App\Models\Contact;
 use App\Models\InboxItem;
+use App\Models\TaxCode;
 use App\Rules\MoneyString;
 use App\Services\Classification\CategorySuggester;
 use App\Support\Money;
@@ -67,6 +68,10 @@ new #[Title('Review document')] class extends Component {
         foreach (array_keys($this->lines) as $i) {
             $this->recalcLine($i);
         }
+
+        // After the lines: the opening category reads the contact's history, which
+        // is still useful even when this document type can't be filed against them.
+        $this->clearContactNotOffered();
 
         // OCR is doubly opt-in. Track each half separately so the hint below can
         // name the gate that is actually off (mirrors InboxServiceProvider).
@@ -146,6 +151,7 @@ new #[Title('Review document')] class extends Component {
         return Account::query()
             ->selectableForItemAccount()
             ->where('type', AccountType::Expense->value)
+            ->where('is_active', true)
             ->orderBy('code')
             ->value('id');
     }
@@ -188,19 +194,41 @@ new #[Title('Review document')] class extends Component {
 
     public function updatedDocumentType(): void
     {
-        unset($this->contactOptions);
+        unset($this->contactOptions, $this->accountOptions);
 
         if ($this->documentType !== 'bank') {
             $this->bankLineId = null;
         }
 
         // A vendor selected for a bill is not a valid employee for a reimbursement.
-        if ($this->documentType === 'reimbursement' && $this->contactId !== null) {
-            $stillValid = Contact::query()->whereKey($this->contactId)->where('is_employee', true)->exists();
+        $this->clearContactNotOffered();
+    }
 
-            if (! $stillValid) {
-                $this->contactId = null;
-            }
+    /**
+     * The contacts this document type can be filed against, the same ones its form
+     * takes: a bill goes to a vendor, a reimbursement to an employee.
+     *
+     * @return \Illuminate\Database\Eloquent\Builder<Contact>
+     */
+    protected function offeredContacts()
+    {
+        $query = Contact::query()->where('is_active', true);
+
+        return match ($this->documentType) {
+            'bill' => $query->where('is_vendor', true),
+            'reimbursement' => $query->where('is_employee', true),
+            default => $query,
+        };
+    }
+
+    /**
+     * Drop a contact the select no longer lists. Left in place it shows as blank
+     * while still being sent with the form.
+     */
+    protected function clearContactNotOffered(): void
+    {
+        if ($this->contactId !== null && ! $this->offeredContacts()->whereKey($this->contactId)->exists()) {
+            $this->contactId = null;
         }
     }
 
@@ -236,10 +264,10 @@ new #[Title('Review document')] class extends Component {
             $amount = 0;
         }
 
-        $taxCode = $line['tax_code_id'] ? \App\Models\TaxCode::find($line['tax_code_id']) : null;
+        $taxCode = $line['tax_code_id'] ? TaxCode::find($line['tax_code_id']) : null;
         $autoTax = $taxCode ? $taxCode->taxFor($amount) : 0;
 
-        $secondaryTaxCode = ($line['secondary_tax_code_id'] ?? null) ? \App\Models\TaxCode::find($line['secondary_tax_code_id']) : null;
+        $secondaryTaxCode = ($line['secondary_tax_code_id'] ?? null) ? TaxCode::find($line['secondary_tax_code_id']) : null;
         $secondaryTax = $secondaryTaxCode ? $secondaryTaxCode->taxFor($amount) : 0;
 
         $this->lines[$i]['tax_code_ids'] = array_values(array_filter([$line['tax_code_id'], $line['secondary_tax_code_id'] ?? null]));
@@ -268,8 +296,20 @@ new #[Title('Review document')] class extends Component {
             'documentType' => ['required', 'in:bill,expense,reimbursement,bank'],
             'vendor' => ['nullable', 'string', 'max:255'],
             'date' => [Rule::requiredIf($this->documentType !== 'bank'), 'nullable', 'date'],
-            'contactId' => [Rule::requiredIf(in_array($this->documentType, ['bill', 'reimbursement'], true)), 'nullable', 'integer', Rule::exists('contacts', 'id')->where('company_id', $companyId)],
-            'paymentAccountId' => [Rule::requiredIf($this->documentType === 'expense'), 'nullable', 'integer', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
+            'contactId' => [
+                Rule::requiredIf(in_array($this->documentType, ['bill', 'reimbursement'], true)),
+                'nullable',
+                'integer',
+                Rule::exists('contacts', 'id')
+                    ->where('company_id', $companyId)
+                    ->when($this->documentType === 'bill', fn ($rule) => $rule->where('is_vendor', true))
+                    ->when($this->documentType === 'reimbursement', fn ($rule) => $rule->where('is_employee', true)),
+            ],
+            'paymentAccountId' => [Rule::requiredIf($this->documentType === 'expense'), 'nullable', 'integer', Rule::exists('accounts', 'id')->where('company_id', $companyId), function (string $attribute, mixed $value, \Closure $fail) {
+                if ($this->documentType === 'expense' && ! Account::query()->expensePaymentSources()->where('is_active', true)->whereKey($value)->exists()) {
+                    $fail(__('Choose a bank or credit-card account, or one switched on with Use to pay expenses.'));
+                }
+            }],
             'bankLineId' => [Rule::requiredIf($this->documentType === 'bank'), 'nullable', 'integer', Rule::exists('bank_statement_lines', 'id')->where('company_id', $companyId)],
             'lines' => ['array', 'min:1'],
             'lines.*.account_id' => ['required', 'integer', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
@@ -350,14 +390,7 @@ new #[Title('Review document')] class extends Component {
     #[Computed]
     public function contactOptions()
     {
-        $query = Contact::query()->where('is_active', true);
-
-        // Reimbursements are owed to a person, not a supplier.
-        if ($this->documentType === 'reimbursement') {
-            $query->where('is_employee', true);
-        }
-
-        return $query->orderBy('display_name')->get(['id', 'display_name']);
+        return $this->offeredContacts()->orderBy('display_name')->get(['id', 'display_name']);
     }
 
     /**
@@ -368,9 +401,15 @@ new #[Title('Review document')] class extends Component {
     {
         $lineAccountIds = collect($this->lines)->pluck('account_id')->filter()->all();
 
+        // Never control accounts, which the bank-match path refuses anyway; within
+        // that, what the destination form takes. An expense has the widest list.
         return Account::query()
             ->where(function ($q) use ($lineAccountIds) {
-                $q->whereIn('id', Account::query()->selectableForItemAccount()->select('id'));
+                $q->where(fn ($inner) => $inner
+                    ->selectableForItemAccount()
+                    ->where('is_active', true)
+                    ->when($this->documentType === 'bill', fn ($type) => $type->whereIn('type', [AccountType::Expense->value, AccountType::Asset->value, AccountType::Liability->value]))
+                    ->when($this->documentType === 'reimbursement', fn ($type) => $type->where('type', AccountType::Expense->value)));
 
                 if ($lineAccountIds !== []) {
                     $q->orWhereIn('id', $lineAccountIds);
@@ -387,7 +426,7 @@ new #[Title('Review document')] class extends Component {
     public function paymentAccountOptions()
     {
         return Account::query()
-            ->whereIn('subtype', ['bank', 'credit_card', 'current_asset'])
+            ->expensePaymentSources()
             ->where('is_active', true)
             ->orderBy('code')
             ->get(['id', 'code', 'name']);
@@ -415,25 +454,12 @@ new #[Title('Review document')] class extends Component {
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, \App\Models\TaxCode>
+     * @return \Illuminate\Support\Collection<int, TaxCode>
      */
     #[Computed]
     public function taxCodeOptions()
     {
-        $lineTaxCodeIds = collect($this->lines)
-            ->flatMap(fn ($l) => [$l['tax_code_id'] ?? null, $l['secondary_tax_code_id'] ?? null])
-            ->filter()->all();
-
-        return \App\Models\TaxCode::query()
-            ->where(function ($q) use ($lineTaxCodeIds) {
-                $q->where(fn ($inner) => $inner->where('is_active', true)->forPurchases());
-
-                if ($lineTaxCodeIds !== []) {
-                    $q->orWhereIn('id', $lineTaxCodeIds);
-                }
-            })
-            ->orderBy('code')
-            ->get();
+        return TaxCode::query()->offeredForPurchases(TaxCode::idsOnLines($this->lines))->orderBy('code')->get();
     }
 
     public function totalCents(): int
@@ -565,6 +591,14 @@ new #[Title('Review document')] class extends Component {
                         </flux:text>
                     @endif
 
+                    @if ($documentType === 'bill' && $this->contactOptions->isEmpty())
+                        <flux:text class="text-sm text-muted-foreground">
+                            {{ __('No vendors yet.') }}
+                            <flux:link :href="route('vendors.index', ['company' => $company->slug])" wire:navigate>{{ __('Add a vendor') }}</flux:link>
+                            {{ __('(a contact marked as a vendor) to create this bill.') }}
+                        </flux:text>
+                    @endif
+
                     <flux:input type="date" wire:model="date" :label="__('Date')" required data-test="inbox-date" />
                 @endif
 
@@ -667,7 +701,7 @@ new #[Title('Review document')] class extends Component {
                 <tfoot class="hidden bg-muted lg:table-footer-group">
                     @foreach ($this->taxBreakdown as $taxRow)
                         <tr data-test="inbox-tax-row">
-                            <td colspan="4" class="px-2 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ LineTaxBreakdown::formatRate($taxRow['rate']) }}%</td>
+                            <td colspan="4" class="px-2 py-2 text-right font-medium">{{ LineTaxBreakdown::labelWithRate($taxRow['label'], $taxRow['rate']) }}</td>
                             <td class="px-2 py-2 text-right font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</td>
                             <td></td>
                         </tr>
@@ -683,7 +717,7 @@ new #[Title('Review document')] class extends Component {
             {{-- Mobile totals (tfoot is desktop-only) --}}
             <div class="space-y-1 border-t border-border bg-muted px-3 py-3 text-sm lg:hidden">
                 @foreach ($this->taxBreakdown as $taxRow)
-                    <div class="flex justify-between"><span class="font-medium">{{ $taxRow['label'] }} {{ LineTaxBreakdown::formatRate($taxRow['rate']) }}%</span><span class="font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</span></div>
+                    <div class="flex justify-between"><span class="font-medium">{{ LineTaxBreakdown::labelWithRate($taxRow['label'], $taxRow['rate']) }}</span><span class="font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</span></div>
                 @endforeach
                 <div class="flex justify-between text-base"><span class="font-semibold">{{ __('Total') }}</span><span class="font-mono font-semibold">{{ number_format($this->totalCents() / 100, 2) }}</span></div>
             </div>

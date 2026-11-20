@@ -53,6 +53,7 @@ class ReportCatalog
                     ->filter(fn (array $report): bool => match ($report['key']) {
                         'reports.form-1099' => $company->supports(JurisdictionCapability::Form1099),
                         'reports.vat-return' => $company->supports(JurisdictionCapability::VatReturn),
+                        'reports.statutory-accounts' => $company->supports(JurisdictionCapability::UkStatutoryAccounts),
                         'reports.gifi' => $company->usesGifi(),
                         'reports.t5013' => $company->filesT5013(),
                         'reports.t2125' => $company->filesT2125(),
@@ -90,6 +91,35 @@ class ReportCatalog
             ->flatMap(fn (array $category): array => $category['reports'])
             ->keyBy('key')
             ->all();
+    }
+
+    /**
+     * Whether the user may open a report by its key (route name) — the check
+     * anything that renders a report outside its own page request must apply:
+     * scheduled emails, management packages, printing. The user must reach the
+     * section(s) gating the report's route, exactly as EnsureSectionEnabled +
+     * EnsureSectionAccess would; and a report the hub catalogues must also be
+     * in this user's catalog (which applies the company's feature, jurisdiction
+     * and owner-only rules). Uncatalogued reports (e.g. the Transactions
+     * report) need only the section.
+     */
+    public static function allows(Company $company, User $user, string $reportKey): bool
+    {
+        $sections = Section::forRouteName($reportKey);
+
+        $reachable = $sections !== [] && collect($sections)->contains(
+            fn (Section $section): bool => $company->sectionEnabled($section) && $user->canAccessSection($company, $section),
+        );
+
+        if (! $reachable) {
+            return false;
+        }
+
+        $catalogued = collect(self::definitions())
+            ->flatMap(fn (array $category): array => $category['reports'])
+            ->contains('key', $reportKey);
+
+        return ! $catalogued || array_key_exists($reportKey, self::flatten($company, $user));
     }
 
     /**
@@ -204,6 +234,7 @@ class ReportCatalog
                 'label' => __('Accountant & Taxes'),
                 'reports' => [
                     ['key' => 'reports.trial-balance', 'label' => __('Trial Balance'), 'description' => __('Debit and credit balance of every account on a date.'), 'icon' => 'scale', 'route' => 'reports.trial-balance', 'companyScoped' => true],
+                    ['key' => 'reports.statutory-accounts', 'label' => __('Statutory Accounts'), 'description' => __('Year-end accounts to file — FRS 102 Section 1A or FRS 105 micro-entity — with notes, as a PDF.'), 'icon' => 'document-text', 'route' => 'reports.statutory-accounts', 'companyScoped' => true],
                     ['key' => 'reports.gifi', 'label' => __('GIFI Statement'), 'description' => __('CRA T2 balance sheet (S100) and income statement (S125) by GIFI code.'), 'icon' => 'document-chart-bar', 'route' => 'reports.gifi', 'companyScoped' => true],
                     ['key' => 'reports.t5013', 'label' => __('T5013 Partnership'), 'description' => __('Partnership GIFI Schedules 100/125 plus the partner income allocation.'), 'icon' => 'document-chart-bar', 'route' => 'reports.t5013', 'companyScoped' => true],
                     ['key' => 'reports.t2125', 'label' => __('T2125 Business Activities'), 'description' => __('Statement of business or professional activities with the capital cost allowance (CCA) schedule.'), 'icon' => 'document-chart-bar', 'route' => 'reports.t2125', 'companyScoped' => true],

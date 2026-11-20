@@ -4,6 +4,7 @@ namespace App\Services\Backup;
 
 use App\Models\Company;
 use App\Models\User;
+use App\Support\Gifi\GifiCodeCorrections;
 use Carbon\CarbonImmutable;
 use RuntimeException;
 
@@ -13,7 +14,9 @@ use RuntimeException;
  *
  * Stateless. The Phase 2 importer reads this file before doing anything
  * else: `schema_version` must match exactly; `app_version` is checked
- * with a warning on mismatch; per-table `sha256` is re-verified.
+ * with a warning on mismatch; per-table `sha256` is re-verified; a table
+ * with encrypted columns says how they are encoded
+ * (`tables.{table}.encrypted_columns`, see {@see JsonlTableWriter::ENCRYPTED_COLUMN_ENCODING}).
  */
 final class ManifestBuilder
 {
@@ -24,7 +27,7 @@ final class ManifestBuilder
      * @param  array{
      *     company: Company,
      *     exportedBy: User,
-     *     tables: array<string, array{rows: int, sha256: string, bytes: int}>,
+     *     tables: array<string, array{rows: int, sha256: string, bytes: int, encrypted_columns?: array<string, array{encoding: string, unreadable: int}>}>,
      *     files: array{count: int, total_bytes: int, missing?: array<int, mixed>},
      *     users: array{count: int, sha256: string},
      *     attachments?: array{count?: int, sha256_index?: string}
@@ -43,6 +46,9 @@ final class ManifestBuilder
         return [
             'schema_version' => (int) config('version.schema'),
             'app_version' => (string) config('version.app'),
+            // Accounts carry CRA's corrected GIFI codes; a bundle without this
+            // key predates them and is corrected on restore.
+            'gifi_codes' => GifiCodeCorrections::REVISION,
             'exported_at' => CarbonImmutable::now('UTC')->toIso8601ZuluString(),
             'exported_by' => [
                 'user_id' => (int) $user->id,

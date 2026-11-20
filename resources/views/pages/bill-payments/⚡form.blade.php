@@ -5,6 +5,7 @@ use App\Enums\BillPaymentStatus;
 use App\Enums\BillStatus;
 use App\Enums\BillType;
 use App\Exceptions\Posting\PeriodLockedException;
+use App\Livewire\Attributes\LockedRows;
 use App\Livewire\Concerns\GuardsEditLockedForm;
 use App\Livewire\Concerns\HandlesPeriodLockOverride;
 use App\Models\Account;
@@ -14,6 +15,7 @@ use App\Models\Company;
 use App\Models\Contact;
 use App\Models\PaymentMethod;
 use App\Actions\Purchasing\SaveBillPayment;
+use App\Rules\BillPaymentSource;
 use App\Services\Posting\BillPaymentPoster;
 use App\Services\Posting\DocumentNumberGenerator;
 use App\Support\Money;
@@ -50,8 +52,13 @@ new #[Title('Pay bills')] class extends Component {
     public string $memo = '';
 
     /**
+     * Built on the server by refreshApplyTable() for the selected payee. Only
+     * each row's Apply cell is the browser's to change: which bill a row pays,
+     * and what it still owes, are refused like a #[Locked] property.
+     *
      * @var array<int, array{bill_id: int, bill_no: string, due_date: string, balance: int, apply: string}>
      */
+    #[LockedRows(except: 'apply')]
     public array $applyTable = [];
 
     protected function editLockRecord(): ?Model
@@ -147,6 +154,10 @@ new #[Title('Pay bills')] class extends Component {
             ->orderBy('due_date')
             ->get();
 
+        // The same open balance SaveBillPayment holds each application to, with
+        // this payment's own existing application counted as still open.
+        $balances = app(BillPaymentPoster::class)->openBalancesFor($bills, $this->payment);
+
         foreach ($bills as $b) {
             $existingApplied = (int) ($existing->get($b->id)->amount_cents ?? 0);
 
@@ -154,7 +165,7 @@ new #[Title('Pay bills')] class extends Component {
                 'bill_id' => $b->id,
                 'bill_no' => $b->bill_no,
                 'due_date' => $b->due_date->toDateString(),
-                'balance' => $b->balanceCents() + $existingApplied,
+                'balance' => $balances[$b->id] ?? 0,
                 'apply' => number_format($existingApplied / 100, 2, '.', ''),
             ];
         }
@@ -175,7 +186,7 @@ new #[Title('Pay bills')] class extends Component {
                     ->ignore($this->payment?->id),
             ],
             'payment_date' => ['required', 'date'],
-            'paid_from_account_id' => ['required', 'integer', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
+            'paid_from_account_id' => ['required', 'integer', Rule::exists('accounts', 'id')->where('company_id', $companyId), new BillPaymentSource($this->payment?->paid_from_account_id)],
             'payment_method_id' => ['nullable', 'integer', Rule::exists('payment_methods', 'id')->where('company_id', $companyId)],
             'reference' => [$this->isChequeMethod() ? 'required' : 'nullable', 'string', 'max:100'],
             'memo' => ['nullable', 'string'],
@@ -186,6 +197,10 @@ new #[Title('Pay bills')] class extends Component {
         $applications = [];
         $totalCents = 0;
 
+        // Each row's bill is the server's (#[LockedRows] refuses any other);
+        // SaveBillPayment checks it is this payee's, of this payment's kind,
+        // still open, and owes at least the amount — against its balance now,
+        // not the one the table showed when it was built.
         foreach ($this->applyTable as $row) {
             $applyCents = Money::tryFromString((string) $row['apply'])?->cents ?? 0;
 
@@ -193,13 +208,7 @@ new #[Title('Pay bills')] class extends Component {
                 continue;
             }
 
-            if ($applyCents > $row['balance']) {
-                $this->addError('applyTable', __('Cannot apply more than the bill balance.'));
-
-                return;
-            }
-
-            $applications[] = ['bill_id' => $row['bill_id'], 'amount_cents' => $applyCents];
+            $applications[] = ['bill_id' => (int) $row['bill_id'], 'amount_cents' => $applyCents];
             $totalCents += $applyCents;
         }
 
@@ -292,7 +301,7 @@ new #[Title('Pay bills')] class extends Component {
         // never drops a since-deactivated account.
         return Account::query()
             ->where(function ($q) {
-                $q->where(fn ($inner) => $inner->whereIn('subtype', [AccountSubtype::Bank->value, AccountSubtype::CreditCard->value])->where('is_active', true));
+                $q->where(fn ($inner) => $inner->billPaymentSources()->where('is_active', true));
 
                 if ($this->paid_from_account_id) {
                     $q->orWhere('id', $this->paid_from_account_id);

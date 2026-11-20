@@ -26,7 +26,7 @@ class BusinessActionsServer extends Server
     /**
      * The MCP server's version.
      */
-    protected string $version = '1.3.1';
+    protected string $version = '1.4.4';
 
     /**
      * The MCP server's instructions for the LLM.

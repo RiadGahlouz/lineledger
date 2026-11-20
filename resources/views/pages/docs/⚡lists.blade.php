@@ -44,7 +44,7 @@ new #[Title('Documentation — Lists')] class extends Component {}; ?>
             <li>{{ __('Choose a Type: Service, Non-inventory, or Other charge (a fee or surcharge such as shipping) for things you do not stock, Inventory to track quantity on hand, or Bundle to group several items that expand into separate lines on a sale.') }}</li>
             <li>{{ __('Enter a Name and, if you use them, a SKU, Description, and Category.') }}</li>
             <li>{{ __('Set a Default price and the Income / sales account the sale should post to. If you also buy the item, set a Purchase / expense account under Purchase information — leave it as “Same as income account” and bills, purchase orders, and vendor credits fall back to the income account.') }}</li>
-            <li>{{ __('Under Default tax, pick up to two tax codes (for example GST and PST) so the right taxes apply whenever you add the item to a line — each is applied separately.') }}</li>
+            <li>{{ __('Under Default tax, pick up to two tax codes (for example GST and PST) so the right taxes apply whenever you add the item to a line — each is applied separately. A document only fills in a code that applies to it, so a Sales only code stays off a bill.') }}</li>
             <li>{{ __('Select Save.') }}</li>
         </ol>
 
@@ -168,6 +168,7 @@ new #[Title('Documentation — Lists')] class extends Component {}; ?>
             <li>{{ __('Open Settings → Lists → Payment methods, then select New method.') }}</li>
             <li>{{ __('Enter a Name.') }}</li>
             <li>{{ __('Turn on Cheque method if this method should enable cheque printing. (In a US organization the label reads Check throughout.)') }}</li>
+            <li>{{ __('In a US organization, turn on Card or payment app for a credit, debit or prepaid card, or for an app such as PayPal or Venmo. The 1099 Summary leaves out payments made with it, since the card company or app reports them on Form 1099-K. Credit card starts with it turned on.') }}</li>
             <li>{{ __('Select Save.') }}</li>
         </ol>
 
@@ -300,13 +301,14 @@ new #[Title('Documentation — Lists')] class extends Component {}; ?>
         {{-- ───────────────────────── Form styles ──────────────────────────── --}}
         <flux:heading size="lg" class="mt-8">{{ __('Form styles') }}</flux:heading>
         <flux:text>
-            {{ __('A form style is a named invoice template. Each style can override your logo, an accent colour, and the footer message, so you can keep, say, a branded style for customers and a plain one for internal copies. You pick a style on an individual invoice; invoices that do not pick one fall back to the default style, or to your plain invoice settings if you have not added any styles yet.') }}
+            {{ __('A form style is a named invoice template. Each style picks a layout and can override your logo, an accent colour, and the footer message, so you can keep, say, a branded style for customers and a plain one for internal copies. You pick a style on an individual invoice; invoices that do not pick one fall back to the default style, or to your plain invoice settings if you have not added any styles yet.') }}
         </flux:text>
 
         <p><strong>{{ __('To add a form style:') }}</strong></p>
         <ol class="list-decimal ps-6 space-y-1">
             <li>{{ __('Open Settings → Lists → Form styles, then select New style.') }}</li>
             <li>{{ __('Enter a Name.') }}</li>
+            <li>{{ __('Choose a Layout. Classic is the boxed layout with Bill to and Ship to side by side. Airy is an open layout: your details top left and logo top right, a large INVOICE heading, Invoice to (and Ship to, when the customer has a shipping address) beside the invoice number and dates, an Activity / Qty / Rate / Amount table that prints each line’s item name in bold above its description, and the balance due under a dotted rule with the customer message and your payment instructions (from invoice settings) beside it. Both layouts print the same details — terms, P.O. number, sales rep, shipping, the payment schedule and your tax numbers — so you can switch between them at any time.') }}</li>
             <li>{{ __('Optionally set an Accent colour as a 6-digit hex value (such as #2563eb) to tint the invoice title, table headers, and total.') }}</li>
             <li>{{ __('Add a Footer message to override the footer from your invoice settings, and turn Show logo on or off.') }}</li>
             <li>{{ __('Turn on Default style to make this the style new invoices use when none is chosen.') }}</li>

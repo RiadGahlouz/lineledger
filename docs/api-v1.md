@@ -6,7 +6,7 @@ drive documents through the general ledger.
 
 > **Two documents, one API.** This guide is the narrative — auth, conventions,
 > lifecycle, and worked examples. The complete per-endpoint reference is the
-> machine-readable OpenAPI 3.1 spec (version `1.3.1`), served **unauthenticated** at
+> machine-readable OpenAPI 3.1 spec (version `1.4.4`), served **unauthenticated** at
 > **`GET /api/v1/openapi.json`** (source: `resources/api/openapi.yaml`). It covers
 > every resource in [§3](#3-the-resource-map). Point your client generator at that;
 > read this to understand how the API behaves.
@@ -171,6 +171,7 @@ throttle runs *before* key authentication, so requests with bad keys are limited
 | Money | All money fields are **integer cents** (e.g. `total_cents: 10500` = $105.00). Never floats. |
 | Quantities | Strings, up to 4 decimal places (e.g. `"quantity": "1.5"`). |
 | Negative lines | `unit_price_cents` may be **negative** on an invoice line to record a discount or credit against the invoice (e.g. a member discount posted to a contra-revenue account). `quantity` stays positive — the sign lives on the price. The invoice **total must stay above zero**; a net credit is a credit memo, not an invoice. Credit memos and sales orders reject a negative price. |
+| Negative quantities | `quantity` may be **negative** on a credit memo line, but not zero (`"0"` and `"0.00"` are both refused). Use it when a credit memo refunds one item and re-charges the customer for a substituted one: `"quantity": "-1"` × `unit_price_cents: 19500` is a −$195.00 line, Sales by Item counts it as one sold, and it posts as a **credit** to its account (and to tax payable, if it is taxed). `unit_price_cents` stays at 0 or above. The credit memo **total must stay above zero**; the check runs on the lines' pre-tax subtotal, draft or not. |
 | Document numbers | Optional on create for every numbered document except sales orders (`invoice_no`, `bill_no`, `deposit_no`, …); omit the field and the server assigns the next free number. **Unique per organization** — a duplicate is a `422` naming the field. See [§2.2](#22-document-numbers). |
 | Dates | ISO `YYYY-MM-DD`. |
 | Timestamps | ISO 8601 in the response. |
@@ -252,6 +253,48 @@ number they were created with. Because a number you supply is unique, it also wo
 as a retry guard: create with your own number, and a retried request that would
 duplicate it gets a `422` instead of a second document (see
 [§5.4](#54-reconcile-what-youve-sent)).
+
+### 2.3 Journal lines on foreign-currency accounts
+
+A journal entry balances in **home** cents (`debit_cents` / `credit_cents`). A line on
+a foreign-currency account — a foreign bank or credit card, or a per-currency Accounts
+Receivable / Payable control — also records what it moved in that account's currency,
+so the period-end revaluation restates real foreign balances and the AR/AP
+reconcilers see the line. Send what you know and the server works out the rest:
+
+| You send | The server works out |
+|---|---|
+| home cents + `foreign_debit_cents`/`foreign_credit_cents` + `fx_rate` | nothing; the three must agree: home within `max(1, round(fx_rate ÷ 2))` cents of foreign × rate, per side |
+| home cents + foreign cents | `fx_rate`, from the two amounts |
+| home cents (+ `fx_rate`) | the foreign amount |
+| `debit_cents: 0, credit_cents: 0` + foreign cents (+ `fx_rate`) | the home amount, rounded half-up |
+
+A missing `fx_rate` is the rate on file for `entry_date` — the one a foreign document
+dated that day would lock (manual rate first, then the daily fetched rate). With none
+on file the line fails with a `422` on `lines.N.fx_rate`. Rates are home units per 1
+foreign unit (`"1.35"`: one USD is 1.35 CAD), above zero, at most 8 decimal places.
+`currency_code` is optional and must be the account's own currency. Home amounts
+worked out from foreign ones are rounded line by line; when the entry balances exactly
+before that rounding but not after, the difference goes a cent at a time onto the
+largest of those lines. Nothing is worked out for a line on a home-currency account: it
+keeps a foreign memo only when the memo comes complete — `currency_code`, `fx_rate` and
+a foreign amount on the same side as the home amount, the way a foreign document's legs
+carry one — and anything less is a `422`. Responses carry `currency_code`, `fx_rate`, `foreign_debit_cents` and
+`foreign_credit_cents` on every line — `null`/`0` on a line without a memo.
+
+Opening a USD bank account (id 42) with 10,000.00 USD at 1.35 against Opening Balance
+Equity (id 17); the bank line comes back with `debit_cents: 1350000`:
+
+```json
+{
+  "entry_date": "2026-03-01",
+  "memo": "Opening balance — USD Chequing",
+  "lines": [
+    { "account_id": 42, "debit_cents": 0, "credit_cents": 0, "foreign_debit_cents": 1000000, "fx_rate": "1.35" },
+    { "account_id": 17, "debit_cents": 0, "credit_cents": 1350000 }
+  ]
+}
+```
 
 ---
 
@@ -545,6 +588,9 @@ Common causes:
 - Sum of `applications[].amount_cents` exceeds `amount_cents`.
 - Invoice lines that net to zero or to a credit (`lines`: `"The invoice total must
   be greater than zero. Use a credit memo for a net credit."`).
+- Credit memo lines that net to zero or less (`lines`: `"The credit memo total must
+  be greater than zero."`), or a credit memo line with a quantity of zero
+  (`lines.N.quantity`).
 
 ### Posting (`422`, no `errors` key)
 

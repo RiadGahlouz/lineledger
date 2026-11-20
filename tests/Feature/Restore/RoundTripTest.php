@@ -1,10 +1,13 @@
 <?php
 
 use App\Enums\AccountSubtype;
+use App\Enums\AuditAction;
 use App\Enums\CompanyBackupStatus;
 use App\Enums\CompanyRestoreStatus;
 use App\Enums\CompanyRole;
 use App\Enums\InvoiceStatus;
+use App\Enums\McpProposalStatus;
+use App\Enums\ReceiptStatus;
 use App\Enums\TaxAppliesTo;
 use App\Models\Account;
 use App\Models\Attachment;
@@ -13,7 +16,9 @@ use App\Models\BillLine;
 use App\Models\BillPayment;
 use App\Models\Cheque;
 use App\Models\Company;
+use App\Models\CompanyApiKey;
 use App\Models\CompanyBackup;
+use App\Models\CompanyInvitation;
 use App\Models\CompanyRestore;
 use App\Models\Contact;
 use App\Models\CreditMemo;
@@ -25,6 +30,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceLine;
 use App\Models\Item;
 use App\Models\JournalEntry;
+use App\Models\McpWriteProposal;
 use App\Models\Membership;
 use App\Models\OpeningBalanceRow;
 use App\Models\OpeningBalanceState;
@@ -35,6 +41,7 @@ use App\Models\TaxCode;
 use App\Models\TaxReturn;
 use App\Models\User;
 use App\Models\VendorCredit;
+use App\Services\Audit\AccountingAuditRecorder;
 use App\Services\Backup\BackupTableRegistry;
 use App\Services\Backup\CompanyExporter;
 use App\Services\Restore\CompanyImporter;
@@ -43,6 +50,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 beforeEach(function () {
     Storage::fake('local');
@@ -235,6 +243,69 @@ beforeEach(function () {
         'size_bytes' => strlen('ARTICLES-PDF-BYTES'),
         'uploaded_by_id' => $this->bob->id,
     ]);
+
+    // ---- An API key, and an audit row attributed to it. The bundle never
+    //      carries the key's secret; the audit row's api_key_id FK must still
+    //      resolve to the restored key. ----
+    ['key' => $this->apiKey, 'plaintext' => $this->apiKeyPlaintext] = CompanyApiKey::mint(
+        $this->companyA,
+        'Zapier',
+        $this->alice->id,
+        ['sales:read'],
+    );
+
+    app()->instance('current_api_key', $this->apiKey);
+    app(AccountingAuditRecorder::class)->record(
+        $this->companyA->id,
+        AuditAction::JournalEntryPosted,
+        $this->journalEntry,
+        journalEntry: $this->journalEntry,
+    );
+    app()->forgetInstance('current_api_key');
+
+    // ---- Values UNIQUE across the instance, which a restore next to Company A
+    //      must not repeat: inbox email, an accepted and an open invitation, a
+    //      Stripe card payment and an agentic MCP proposal. ----
+    $this->companyA->forceFill([
+        'inbound_email_token' => Str::lower(Str::random(40)),
+        'inbound_email_enabled' => true,
+    ])->save();
+
+    $this->acceptedInvitation = CompanyInvitation::factory()->accepted()->create([
+        'company_id' => $this->companyA->id,
+        'invited_by' => $this->alice->id,
+        'email' => $this->bob->email,
+    ]);
+    $this->openInvitation = CompanyInvitation::factory()->expiresIn(3)->create([
+        'company_id' => $this->companyA->id,
+        'invited_by' => $this->alice->id,
+        'email' => 'carol@acme.test',
+    ]);
+
+    CustomerReceipt::create([
+        'contact_id' => $this->customer->id,
+        'receipt_no' => 'RCPT-STRIPE',
+        'receipt_date' => '2026-05-04',
+        'deposit_to_account_id' => $this->bankAccount->id,
+        'reference' => 'pi_3RoundTrip',
+        'amount_cents' => 2500,
+        'currency_code' => $this->companyA->currency_code,
+        'home_amount_cents' => 2500,
+        'status' => ReceiptStatus::Draft,
+        'stripe_payment_intent_id' => 'pi_3RoundTrip',
+    ]);
+
+    $this->proposal = McpWriteProposal::create([
+        'company_api_key_id' => $this->apiKey->id,
+        'user_id' => $this->alice->id,
+        'tool' => 'journal_entry',
+        'payload' => ['memo' => 'opening balance'],
+        'preview' => 'Journal entry JE-001',
+        'idempotency_key' => (string) Str::ulid(),
+        'status' => McpProposalStatus::Confirmed,
+        'confirmed_journal_entry_id' => $this->journalEntry->id,
+        'expires_at' => now()->addDay(),
+    ]);
 });
 
 afterEach(function () {
@@ -271,6 +342,50 @@ it('restores a bundle staged on object storage', function () {
 
     expect($restore->status)->toBe(CompanyRestoreStatus::Completed)
         ->and(Company::find($restore->company_id)?->name)->toBe('Acme Inc.');
+});
+
+it('leaves no company behind when a restore fails partway', function () {
+    $backup = CompanyBackup::create([
+        'status' => CompanyBackupStatus::Pending,
+        'requested_by_user_id' => $this->alice->id,
+        'app_version' => config('version.app'),
+        'schema_version' => config('version.schema'),
+    ]);
+    app(CompanyExporter::class)->export($backup);
+    $backup->refresh();
+
+    // Overstate the contacts row count in the manifest: the importer creates
+    // the company, inserts the contacts, then fails the per-table count check.
+    $restorePath = 'restores/'.basename($backup->file_path);
+    Storage::disk('local')->put($restorePath, Storage::disk('local')->get($backup->file_path));
+
+    $zip = new ZipArchive;
+    $zip->open(Storage::disk('local')->path($restorePath));
+    $manifest = json_decode((string) $zip->getFromName('manifest.json'), true);
+    $manifest['tables']['contacts']['rows']++;
+    $zip->addFromString('manifest.json', json_encode($manifest));
+    $zip->close();
+
+    $restore = CompanyRestore::create([
+        'requested_by_user_id' => $this->alice->id,
+        'status' => CompanyRestoreStatus::Pending,
+        'file_path' => $restorePath,
+    ]);
+
+    $companiesBefore = DB::table('companies')->count();
+    $membershipsBefore = DB::table('company_members')->count();
+
+    app()->forgetInstance('current_company');
+
+    expect(fn () => app(CompanyImporter::class)->import($restore))
+        ->toThrow(RuntimeException::class, 'Row count mismatch for table contacts');
+
+    $restore->refresh();
+
+    expect($restore->status)->toBe(CompanyRestoreStatus::Failed)
+        ->and($restore->company_id)->toBeNull()
+        ->and(DB::table('companies')->count())->toBe($companiesBefore)
+        ->and(DB::table('company_members')->count())->toBe($membershipsBefore);
 });
 
 it('round-trips a company through export and import', function () {
@@ -557,6 +672,62 @@ it('round-trips a company through export and import', function () {
     expect($bobMembershipB)->not->toBeNull()
         ->and($folderB->created_by_member_id)->toBe($bobMembershipB->id)
         ->and($folderB->viewer_member_ids)->toContain($bobMembershipB->id);
+
+    // ---- 7c. The API key comes back revoked, with a hash nobody holds. ----
+    $keyB = CompanyApiKey::withoutGlobalScopes()
+        ->where('company_id', $companyB->id)
+        ->sole();
+
+    expect($keyB->label)->toBe('Zapier')
+        ->and($keyB->abilities)->toBe(['sales:read'])
+        ->and($keyB->last_four)->toBe($this->apiKey->last_four)
+        ->and($keyB->isActive())->toBeFalse()
+        ->and($keyB->getRawOriginal('token_hash'))->not->toBe($this->apiKey->getRawOriginal('token_hash'))
+        ->and(CompanyApiKey::withoutGlobalScopes()
+            ->where('token_hash', hash('sha256', $this->apiKeyPlaintext))
+            ->pluck('id')
+            ->all())->toBe([$this->apiKey->id]);
+
+    $auditKeyIdsB = DB::table('accounting_audit_logs')
+        ->where('company_id', $companyB->id)
+        ->whereNotNull('api_key_id')
+        ->pluck('api_key_id')
+        ->all();
+
+    expect($auditKeyIdsB)->toBe([$keyB->id]);
+
+    // ---- 7d. Nothing UNIQUE across the instance is shared with Company A:
+    //      inbox email comes back off, invitations and the MCP proposal get
+    //      tokens nobody holds, and the Stripe PaymentIntent id is dropped. ----
+    expect($companyB->inbound_email_token)->toBeNull()
+        ->and($companyB->inbound_email_enabled)->toBeFalse()
+        ->and($freshA->inbound_email_enabled)->toBeTrue();
+
+    $invitationsB = CompanyInvitation::query()
+        ->where('company_id', $companyB->id)
+        ->get()
+        ->keyBy('email');
+
+    expect($invitationsB->pluck('code')->intersect([$this->acceptedInvitation->code, $this->openInvitation->code]))->toBeEmpty()
+        ->and($invitationsB[$this->bob->email]->isAccepted())->toBeTrue()
+        ->and($invitationsB['carol@acme.test']->isExpired())->toBeTrue();
+
+    $stripeReceiptB = CustomerReceipt::withoutGlobalScopes()
+        ->where('company_id', $companyB->id)
+        ->where('receipt_no', 'RCPT-STRIPE')
+        ->sole();
+
+    expect($stripeReceiptB->stripe_payment_intent_id)->toBeNull()
+        ->and($stripeReceiptB->reference)->toBe('pi_3RoundTrip');
+
+    $proposalB = McpWriteProposal::withoutGlobalScopes()
+        ->where('company_id', $companyB->id)
+        ->sole();
+
+    expect($proposalB->idempotency_key)->not->toBe($this->proposal->idempotency_key)
+        ->and($proposalB->status)->toBe(McpProposalStatus::Confirmed)
+        ->and($proposalB->company_api_key_id)->toBe($keyB->id)
+        ->and($proposalB->confirmed_journal_entry_id)->toBe($jeB->id);
 
     // ---- 8. Audit-log chain verifies on Company B. ----
     // With UNIQUE(company_id, row_hash) the bundle's hashes are copied verbatim,

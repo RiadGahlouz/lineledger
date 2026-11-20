@@ -49,8 +49,7 @@ test('company member can be removed by owner', function () {
 
     $this->actingAs($owner);
 
-    Livewire::test('pages::companies.remove-member-modal', ['company' => $company])
-        ->set('memberId', $member->id)
+    Livewire::test('pages::companies.remove-member-modal', ['company' => $company, 'memberId' => $member->id])
         ->call('removeMember')
         ->assertHasNoErrors();
 
@@ -69,8 +68,7 @@ test('company member cannot be removed by non owners', function () {
 
     $this->actingAs($admin);
 
-    Livewire::test('pages::companies.remove-member-modal', ['company' => $company])
-        ->set('memberId', $member->id)
+    Livewire::test('pages::companies.remove-member-modal', ['company' => $company, 'memberId' => $member->id])
         ->call('removeMember')
         ->assertForbidden();
 });
@@ -88,10 +86,33 @@ test('removed members current company is set to personal company', function () {
 
     $this->actingAs($owner);
 
-    Livewire::test('pages::companies.remove-member-modal', ['company' => $company])
-        ->set('memberId', $member->id)
+    Livewire::test('pages::companies.remove-member-modal', ['company' => $company, 'memberId' => $member->id])
         ->call('removeMember')
         ->assertHasNoErrors();
 
     expect($member->fresh()->current_company_id)->toEqual($personalCompany->id);
+});
+
+it('opens the edit dialog with the member\'s access and closes it on save', function () {
+    $owner = User::factory()->create();
+    $member = User::factory()->create(['name' => 'Morgan Member']);
+    $company = Company::factory()->create();
+
+    $company->members()->attach($owner, ['role' => CompanyRole::Owner->value]);
+    $company->members()->attach($member, ['role' => CompanyRole::Accountant->value]);
+
+    // The Edit button calls editMember(); the dialog is a Flux modal, so it
+    // must be opened (and closed after saving) through Flux, not a bare event.
+    Livewire::actingAs($owner)
+        ->test('pages::companies.edit', ['company' => $company])
+        ->call('editMember', $member->id)
+        ->assertDispatched('modal-show', name: 'edit-member')
+        ->assertSet('editMemberName', 'Morgan Member')
+        ->assertSet('editRole', CompanyRole::Accountant->value)
+        ->set('editRole', CompanyRole::Admin->value)
+        ->call('saveMemberAccess')
+        ->assertHasNoErrors()
+        ->assertDispatched('modal-close', name: 'edit-member');
+
+    expect($company->memberships()->where('user_id', $member->id)->value('role'))->toBe(CompanyRole::Admin);
 });

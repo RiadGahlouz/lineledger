@@ -313,7 +313,7 @@ new #[Title('Invoice')] class extends Component
             // default — never overwriting one already on the line, so item
             // and contact defaults keep their existing precedence.
             if (str_ends_with($key, '.account_id') && $value && empty($this->lines[$i]['tax_code_id'])) {
-                $this->lines[$i]['tax_code_id'] = Account::find($value)?->default_tax_code_id;
+                $this->lines[$i]['tax_code_id'] = TaxCode::defaultForSales(Account::find($value)?->default_tax_code_id);
             }
 
             $this->recalcLine($i);
@@ -350,8 +350,7 @@ new #[Title('Invoice')] class extends Component
                 }
                 if (! $hadPrice) {
                     $this->lines[$i]['unit_price'] = Money::fromCents((int) $item->default_price_cents)->toDecimalString();
-                    $this->lines[$i]['tax_code_id'] = $item->default_tax_code_id;
-                    $this->lines[$i]['secondary_tax_code_id'] = $item->default_secondary_tax_code_id;
+                    [$this->lines[$i]['tax_code_id'], $this->lines[$i]['secondary_tax_code_id']] = TaxCode::defaultsForSales($item->default_tax_code_id, $item->default_secondary_tax_code_id);
                 }
             }
         }
@@ -393,7 +392,7 @@ new #[Title('Invoice')] class extends Component
 
             $this->lines[$i]['description'] = __('Membership dues: :level', ['level' => $level->name]);
             $this->lines[$i]['unit_price'] = Money::fromCents((int) $level->default_dues_cents)->toDecimalString();
-            $this->lines[$i]['tax_code_id'] = $level->default_tax_code_id;
+            $this->lines[$i]['tax_code_id'] = TaxCode::defaultForSales($level->default_tax_code_id);
         }
 
         $this->recalcLine($i);
@@ -421,8 +420,7 @@ new #[Title('Invoice')] class extends Component
             $line['description'] = $comp->description ?? $comp->name;
             $line['quantity'] = Quantity::format($component->quantity);
             $line['unit_price'] = Money::fromCents((int) $comp->default_price_cents)->toDecimalString();
-            $line['tax_code_id'] = $comp->default_tax_code_id;
-            $line['secondary_tax_code_id'] = $comp->default_secondary_tax_code_id;
+            [$line['tax_code_id'], $line['secondary_tax_code_id']] = TaxCode::defaultsForSales($comp->default_tax_code_id, $comp->default_secondary_tax_code_id);
 
             $newLines[] = $line;
         }
@@ -488,10 +486,12 @@ new #[Title('Invoice')] class extends Component
             }
         }
 
-        if ($contact?->default_tax_code_id) {
+        $defaultTaxCodeId = TaxCode::defaultForSales($contact?->default_tax_code_id);
+
+        if ($defaultTaxCodeId !== null) {
             foreach ($this->lines as $i => $line) {
                 if (! $line['tax_code_id']) {
-                    $this->lines[$i]['tax_code_id'] = $contact->default_tax_code_id;
+                    $this->lines[$i]['tax_code_id'] = $defaultTaxCodeId;
                     $this->recalcLine($i);
                 }
             }
@@ -597,7 +597,10 @@ new #[Title('Invoice')] class extends Component
     public function saveAsTemplate(): void
     {
         $validated = $this->validate(
-            ['template_name' => ['required', 'string', 'max:255']],
+            [
+                'template_name' => ['required', 'string', 'max:255'],
+                'lines.*.account_id' => ['nullable', 'integer', Rule::exists('accounts', 'id')->where('company_id', $this->company->id)],
+            ],
             attributes: ['template_name' => __('template name')],
         );
 
@@ -928,17 +931,18 @@ new #[Title('Invoice')] class extends Component
     #[Computed]
     public function taxCodeOptions()
     {
-        return TaxCode::query()->where('is_active', true)->orderBy('code')->get();
+        return TaxCode::query()->offeredForSales(TaxCode::idsOnLines($this->lines))->orderBy('code')->get();
     }
 
     /**
      * The company's configured default sales account (invoice settings), used to
-     * prefill new lines and to code any line left without an account. Null when unset.
+     * prefill new lines and to code any line left without an account. Null when
+     * unset or since deactivated.
      */
     #[Computed]
     public function configuredSalesAccountId(): ?int
     {
-        return $this->company->invoiceSettingsOrNew()->default_sales_account_id;
+        return $this->company->invoiceSettingsOrNew()->activeDefaultSalesAccountId();
     }
 
     /**
@@ -1467,7 +1471,7 @@ new #[Title('Invoice')] class extends Component
                     </tr>
                     @forelse ($this->taxBreakdown as $taxRow)
                         <tr data-test="invoice-tax-row">
-                            <td colspan="{{ $this->lineLeadingColspan }}" class="px-2 py-2 text-right font-medium">{{ $taxRow['label'] }} {{ LineTaxBreakdown::formatRate($taxRow['rate']) }}%</td>
+                            <td colspan="{{ $this->lineLeadingColspan }}" class="px-2 py-2 text-right font-medium">{{ LineTaxBreakdown::labelWithRate($taxRow['label'], $taxRow['rate']) }}</td>
                             <td class="px-2 py-2 text-right font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</td>
                             <td></td>
                         </tr>
@@ -1503,7 +1507,7 @@ new #[Title('Invoice')] class extends Component
             <div class="space-y-1 border-t border-border bg-muted px-3 py-3 text-sm lg:hidden">
                 <div class="flex justify-between"><span class="font-medium">{{ __('Subtotal') }}</span><span class="font-mono">{{ number_format($this->totals['subtotal'] / 100, 2) }}</span></div>
                 @forelse ($this->taxBreakdown as $taxRow)
-                    <div class="flex justify-between"><span class="font-medium">{{ $taxRow['label'] }} {{ LineTaxBreakdown::formatRate($taxRow['rate']) }}%</span><span class="font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</span></div>
+                    <div class="flex justify-between"><span class="font-medium">{{ LineTaxBreakdown::labelWithRate($taxRow['label'], $taxRow['rate']) }}</span><span class="font-mono">{{ number_format($taxRow['tax_cents'] / 100, 2) }}</span></div>
                 @empty
                     <div class="flex justify-between"><span class="font-medium">{{ __('Tax') }}</span><span class="font-mono">{{ number_format($this->totals['tax'] / 100, 2) }}</span></div>
                 @endforelse

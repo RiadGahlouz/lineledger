@@ -1,8 +1,10 @@
 <?php
 
+use App\Enums\McpProposalStatus;
 use App\Models\Invoice;
 use App\Services\Restore\IdMapper;
 use App\Services\Restore\RowTransformer;
+use Carbon\CarbonImmutable;
 
 /**
  * Build a fresh transformer with the given user remap, optionally pre-loading
@@ -210,7 +212,7 @@ it('leaves polymorphic fields alone when the id is not mapped yet', function () 
     expect($result['row']['source_id'])->toBe(999);
 });
 
-it('applies companies-row quirks: drops slug, logo_path, stripe_* and captures old id', function () {
+it('applies companies-row quirks: drops slug, logo_path, stripe_*, switches inbox email off and captures old id', function () {
     $transformer = buildTransformer();
 
     $result = $transformer->transform('companies', [
@@ -220,6 +222,8 @@ it('applies companies-row quirks: drops slug, logo_path, stripe_* and captures o
         'logo_path' => 'company-logos/abc.png',
         'stripe_account_id' => 'acct_xyz',
         'stripe_connected_at' => '2026-01-01T00:00:00Z',
+        'inbound_email_token' => 'source-forwarding-token',
+        'inbound_email_enabled' => true,
         'currency_code' => 'CAD',
     ]);
 
@@ -229,6 +233,8 @@ it('applies companies-row quirks: drops slug, logo_path, stripe_* and captures o
         ->and($result['row'])->not->toHaveKey('stripe_account_id')
         ->and($result['row'])->not->toHaveKey('stripe_connected_at')
         ->and($result['row']['logo_path'])->toBeNull()
+        ->and($result['row']['inbound_email_token'])->toBeNull()
+        ->and($result['row']['inbound_email_enabled'])->toBeFalse()
         ->and($result['row']['name'])->toBe('Acme Inc.')
         ->and($result['row']['currency_code'])->toBe('CAD');
 });
@@ -271,19 +277,100 @@ it('preserves the bundle-relative path on attachments and remaps the polymorphic
         ->and($result['row']['attachable_type'])->toBe(Invoice::class);
 });
 
-it('nulls token columns on company_api_keys rows', function () {
+it('restores company_api_keys rows as revoked keys with an unusable token hash', function () {
     $transformer = buildTransformer();
 
+    // The bundle shape: the model hides token_hash, so the column is absent.
     $result = $transformer->transform('company_api_keys', [
         'id' => 1,
+        'company_id' => 5,
+        'label' => 'CI key',
+        'last_four' => '1234',
+        'revoked_at' => null,
+        'token' => 'll_live_plaintext',
+    ]);
+
+    expect($result['row']['token_hash'])->toMatch('/^[0-9a-f]{64}$/')
+        ->and($result['row']['revoked_at'])->not->toBeNull()
+        ->and($result['row']['token'])->toBeNull()
+        ->and($result['row']['last_four'])->toBe('1234')
+        ->and($result['skip'])->toBeFalse();
+
+    // A source hash is replaced, never carried over; each restore mints its own.
+    $again = $transformer->transform('company_api_keys', [
+        'id' => 2,
         'company_id' => 5,
         'label' => 'CI key',
         'token_hash' => 'hash-from-source-instance',
         'last_four' => '1234',
     ]);
 
-    expect($result['row']['token_hash'])->toBeNull()
-        ->and($result['row']['last_four'])->toBe('1234');
+    expect($again['row']['token_hash'])->toMatch('/^[0-9a-f]{64}$/')
+        ->and($again['row']['token_hash'])->not->toBe($result['row']['token_hash']);
+});
+
+it('keeps the original revocation date on a restored company_api_keys row', function () {
+    $transformer = buildTransformer();
+
+    $result = $transformer->transform('company_api_keys', [
+        'id' => 1,
+        'company_id' => 5,
+        'label' => 'Old key',
+        'last_four' => '1234',
+        'revoked_at' => '2026-03-01T12:00:00.000000Z',
+    ]);
+
+    expect($result['row']['revoked_at'])->toBe('2026-03-01T12:00:00.000000Z');
+});
+
+it('restores company_invitations rows with a code nobody holds, expiring the ones still open', function () {
+    $this->travelTo(CarbonImmutable::parse('2026-10-29 12:00:00'));
+    $transformer = buildTransformer();
+    $sourceCode = str_repeat('a', 64);
+
+    $invitation = fn (?string $expiresAt, ?string $acceptedAt): array => $transformer->transform('company_invitations', [
+        'id' => 1,
+        'company_id' => 5,
+        'code' => $sourceCode,
+        'expires_at' => $expiresAt,
+        'accepted_at' => $acceptedAt,
+    ])['row'];
+
+    $open = $invitation('2026-11-01T12:00:00.000000Z', null);
+    $neverExpires = $invitation(null, null);
+    $accepted = $invitation('2026-11-01T12:00:00.000000Z', '2026-10-28T09:00:00.000000Z');
+    $lapsed = $invitation('2026-10-01T12:00:00.000000Z', null);
+
+    expect($open['code'])->toHaveLength(64)
+        ->and([$open['code'], $neverExpires['code'], $accepted['code'], $lapsed['code']])->not->toContain($sourceCode)
+        ->and($open['code'])->not->toBe($neverExpires['code'])
+        ->and($open['expires_at'])->toEqual(now())
+        ->and($neverExpires['expires_at'])->toEqual(now())
+        ->and($accepted['expires_at'])->toBe('2026-11-01T12:00:00.000000Z')
+        ->and($accepted['accepted_at'])->toBe('2026-10-28T09:00:00.000000Z')
+        ->and($lapsed['expires_at'])->toBe('2026-10-01T12:00:00.000000Z');
+});
+
+it('restores mcp_write_proposals rows with a confirm token nobody holds, expiring the pending ones', function () {
+    $transformer = buildTransformer();
+
+    $rows = collect(McpProposalStatus::cases())->mapWithKeys(fn (McpProposalStatus $status): array => [
+        $status->value => $transformer->transform('mcp_write_proposals', [
+            'id' => 1,
+            'company_id' => 5,
+            'idempotency_key' => '01JSOURCEPROPOSALTOKEN0000',
+            'status' => $status->value,
+        ])['row'],
+    ]);
+
+    expect($rows->map(fn (array $row): string => $row['status'])->all())->toBe([
+        McpProposalStatus::Pending->value => McpProposalStatus::Expired->value,
+        McpProposalStatus::Confirmed->value => McpProposalStatus::Confirmed->value,
+        McpProposalStatus::Expired->value => McpProposalStatus::Expired->value,
+        McpProposalStatus::Rejected->value => McpProposalStatus::Rejected->value,
+    ])
+        ->and($rows->pluck('idempotency_key')->unique())->toHaveCount(4)
+        ->and($rows->pluck('idempotency_key'))->not->toContain('01JSOURCEPROPOSALTOKEN0000');
 });
 
 it('passes through company_members rows whose user_id was matched by email', function () {

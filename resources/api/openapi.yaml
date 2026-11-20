@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: LineLedger REST API
-  version: "1.3.1"
+  version: "1.4.4"
   description: >
     Programmatic access to a single company's accounting data over REST.
 
@@ -869,11 +869,30 @@ components:
         line_total_cents: { type: integer }
     DocumentLineInput:
       type: object
-      description: A priced line for a sales order, credit memo or bill. Between 1 and 1000 lines per document.
+      description: A priced line for a sales order or bill. Between 1 and 1000 lines per document.
       required: [quantity, unit_price_cents, account_id]
       properties:
         description: { type: [string, "null"], maxLength: 1000 }
         quantity: { type: [string, number], description: "Decimal quantity, greater than 0 and at most 1,000,000." }
+        unit_price_cents: { type: integer, minimum: 0, maximum: 999999999999 }
+        account_id: { type: integer }
+        item_id: { type: [integer, "null"] }
+        tax_code_id: { type: [integer, "null"] }
+        secondary_tax_code_id: { type: [integer, "null"], description: "Second tax on the same line (e.g. QST alongside GST)." }
+    CreditMemoLineInput:
+      type: object
+      description: >
+        A priced line on a credit memo. Between 1 and 1000 lines per credit memo.
+        quantity MAY BE NEGATIVE — a line that re-charges the customer inside the
+        credit, such as a substituted service, so Sales by Item counts it as sold
+        — but not zero; unit_price_cents stays at 0 or above. The lines as a whole
+        must still net to a total greater than zero; a payload whose lines net to
+        zero or less is refused with 422. A leg that nets negative is posted as a
+        credit to its account.
+      required: [quantity, unit_price_cents, account_id]
+      properties:
+        description: { type: [string, "null"], maxLength: 1000 }
+        quantity: { type: [string, number], description: "Decimal quantity, not zero, between -1,000,000 and 1,000,000." }
         unit_price_cents: { type: integer, minimum: 0, maximum: 999999999999 }
         account_id: { type: integer }
         item_id: { type: [integer, "null"] }
@@ -1082,7 +1101,7 @@ components:
         receipt_no: { type: [string, "null"], maxLength: 50, description: "Create only; must be unique within the company. Omit for the next number in sequence." }
         contact_id: { type: integer, description: "A customer contact." }
         receipt_date: { type: string, format: date }
-        deposit_to_account_id: { type: integer, description: "Bank or Undeposited Funds account." }
+        deposit_to_account_id: { type: integer, description: "Bank or Undeposited Funds account. An update may also keep the account the receipt is already saved on." }
         payment_method_id: { type: [integer, "null"] }
         reference: { type: [string, "null"], maxLength: 100 }
         amount_cents: { type: integer, minimum: 1, maximum: 999999999999 }
@@ -1125,7 +1144,7 @@ components:
         sales_rep_id: { type: [integer, "null"], description: "Employee contact credited with the sale. Must be a contact with is_employee set; reps only surface in the UI when the Employees feature is on." }
         credit_memo_date: { type: string, format: date }
         memo: { type: [string, "null"] }
-        lines: { type: array, minItems: 1, maxItems: 1000, items: { $ref: '#/components/schemas/DocumentLineInput' } }
+        lines: { type: array, minItems: 1, maxItems: 1000, items: { $ref: '#/components/schemas/CreditMemoLineInput' } }
     CreditMemoRefundInput:
       type: object
       required: [refund_date, amount_cents, deposit_to_account_id]
@@ -1220,7 +1239,7 @@ components:
         payment_no: { type: [string, "null"], maxLength: 40, description: "Create only; must be unique within the company. Omit for the next number in sequence." }
         contact_id: { type: integer, description: "A vendor contact — or an employee contact when payment_type is reimbursement." }
         payment_date: { type: string, format: date }
-        paid_from_account_id: { type: integer, description: "Bank or credit-card account the payment comes from." }
+        paid_from_account_id: { type: integer, description: "Bank or credit-card account the payment comes from. An update may also keep the account the payment is already saved on." }
         payment_method_id: { type: [integer, "null"] }
         reference: { type: [string, "null"], maxLength: 100 }
         amount_cents: { type: integer, minimum: 1, maximum: 999999999999 }
@@ -1373,7 +1392,8 @@ components:
     TransferInput:
       type: object
       description: >
-        Moves money between two of the company's bank or credit-card accounts.
+        Moves money between two of the company's bank or credit-card accounts, or
+        accounts switched on with Include in transfers in the Chart of Accounts.
         For two accounts in the same currency send the same value in both amount
         fields. For a cross-currency transfer send each side in its own account's
         currency; the rate is **not** derived from the pair. Each foreign side is
@@ -1385,8 +1405,8 @@ components:
       required: [from_account_id, to_account_id, transfer_date, from_amount_cents, to_amount_cents]
       properties:
         post: { type: boolean, default: true, description: "Create only." }
-        from_account_id: { type: integer, description: "An account with subtype bank or credit_card." }
-        to_account_id: { type: integer, description: "An account with subtype bank or credit_card; must differ from from_account_id." }
+        from_account_id: { type: integer, description: "An account with subtype bank or credit_card, or switched on with Include in transfers (never accounts receivable or payable)." }
+        to_account_id: { type: integer, description: "Same accounts as from_account_id; must differ from it." }
         transfer_no: { type: [string, "null"], maxLength: 40, description: "Create only; ignored on update. Omit for the next number in sequence." }
         transfer_date: { type: string, format: date }
         from_amount_cents: { type: integer, minimum: 1, maximum: 999999999999 }
@@ -1535,6 +1555,10 @@ components:
               debit_cents: { type: integer }
               credit_cents: { type: integer }
               memo: { type: [string, "null"] }
+              currency_code: { type: [string, "null"], description: "The currency of the line's foreign amount: its account's, on a foreign-currency account. Null on a home-currency line without a memo." }
+              fx_rate: { type: [string, "null"], description: "Home units per 1 foreign unit, e.g. \"1.35\". Null on a home-currency line without a memo." }
+              foreign_debit_cents: { type: integer, description: "What the line moved in that currency, in its cents. 0 on a home-currency line without a memo." }
+              foreign_credit_cents: { type: integer }
     JournalEntryInput:
       type: object
       required: [entry_date, lines]
@@ -1547,17 +1571,21 @@ components:
           type: array
           minItems: 2
           maxItems: 1000
-          description: "Debits must equal credits (422 otherwise). A line on the Accounts Receivable control account must name a customer in contact_id, and a line on Accounts Payable a vendor."
+          description: "Debits must equal credits in home cents (422 otherwise). A line on the Accounts Receivable control account must name a customer in contact_id, and a line on Accounts Payable a vendor. A line on a foreign-currency account (a foreign bank or credit card, or a per-currency AR/AP control) also records its amount in that currency: send what you know of the home amount (debit_cents/credit_cents), the foreign amount (foreign_debit_cents/foreign_credit_cents) and fx_rate, and the rest is worked out — a missing rate is the one on file for entry_date (422 on lines.N.fx_rate if there is none), and home cents of 0 beside a foreign amount are converted from it. When all three are sent they must agree. Nothing is worked out for a line on a home-currency account: it keeps a foreign memo only when currency_code, fx_rate and a foreign amount on the home amount's side all come (as a foreign document's legs carry one). See docs/api-v1.md §2.3."
           items:
             type: object
             required: [account_id, debit_cents, credit_cents]
             properties:
               account_id: { type: integer }
-              debit_cents: { type: integer, minimum: 0, maximum: 999999999999 }
-              credit_cents: { type: integer, minimum: 0, maximum: 999999999999 }
+              debit_cents: { type: integer, minimum: 0, maximum: 999999999999, description: "Home cents." }
+              credit_cents: { type: integer, minimum: 0, maximum: 999999999999, description: "Home cents." }
               memo: { type: [string, "null"], maxLength: 1000 }
               contact_id: { type: [integer, "null"] }
               tax_code_id: { type: [integer, "null"], description: "Tags the line for the sales-tax return." }
+              currency_code: { type: [string, "null"], minLength: 3, maxLength: 3, description: "Optional. Must be the line account's own currency (or the home currency on a home-currency line)." }
+              fx_rate: { type: [string, number, "null"], description: "Home units per 1 foreign unit, above zero, at most 8 decimal places." }
+              foreign_debit_cents: { type: [integer, "null"], minimum: 0, maximum: 999999999999, description: "The debit in the account's currency, in that currency's cents." }
+              foreign_credit_cents: { type: [integer, "null"], minimum: 0, maximum: 999999999999, description: "The credit in the account's currency." }
 
     # ---- Fixed assets ---------------------------------------------------
     Asset:
@@ -1928,6 +1956,7 @@ components:
         id: { type: integer }
         name: { type: string }
         is_cheque: { type: boolean }
+        is_card: { type: boolean }
         is_active: { type: boolean }
         created_at: { type: [string, "null"], format: date-time }
     PaymentMethodInput:
@@ -1936,6 +1965,7 @@ components:
       properties:
         name: { type: string, maxLength: 255 }
         is_cheque: { type: boolean, description: "Marks the method as a cheque so receipts using it feed the deposit workflow." }
+        is_card: { type: boolean, description: "Marks the method as a card (credit, debit or prepaid) or a payment app such as PayPal. The card company or app reports these payments on Form 1099-K, so the US 1099 Summary leaves them out." }
         is_active: { type: boolean }
 
   requestBodies:

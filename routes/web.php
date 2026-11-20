@@ -28,6 +28,7 @@ use App\Http\Controllers\Portal\SessionController as PortalSessionController;
 use App\Http\Controllers\Purchasing\PrintPurchaseOrderController;
 use App\Http\Controllers\Purchasing\PrintVendorCreditController;
 use App\Http\Controllers\Reports\PrintReportController;
+use App\Http\Controllers\Reports\StatutoryAccountsPdfController;
 use App\Http\Controllers\SalesOrders\PrintSalesOrderController;
 use App\Http\Controllers\Security\CspReportController;
 use App\Http\Controllers\Settings\ListImportTemplateController;
@@ -43,6 +44,7 @@ use App\Http\Middleware\EnsureSupportEnabled;
 use App\Models\Attachment;
 use App\Models\Company;
 use App\Models\DocumentFolder;
+use App\Support\Attachments\AttachmentAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
@@ -359,6 +361,8 @@ Route::prefix('{company}')
         Route::livewire('budgets/{budget}/edit', 'pages::budgets.form')->name('budgets.edit');
         Route::livewire('reports/sales-tax', 'pages::reports.sales-tax')->name('reports.sales-tax');
         Route::livewire('reports/vat-return', 'pages::reports.vat-return')->name('reports.vat-return');
+        Route::livewire('reports/statutory-accounts', 'pages::reports.statutory-accounts')->name('reports.statutory-accounts');
+        Route::get('reports/statutory-accounts/pdf', StatutoryAccountsPdfController::class)->name('reports.statutory-accounts.pdf');
 
         // Sales, Purchases & Inventory reports
         Route::livewire('reports/sales-by-customer', 'pages::reports.sales-by-customer')->name('reports.sales-by-customer');
@@ -421,13 +425,16 @@ Route::prefix('{company}')
         Route::get('attachments/{attachment}/download', function (Request $request, Company $company, Attachment $attachment) {
             abort_unless($attachment->company_id === $company->id, 404);
 
-            // Repository documents sit behind per-folder view permissions. For
-            // every other attachable type (invoices, bills, …) the closure is a
-            // no-op beyond the company check above.
+            // Repository documents sit behind per-folder view permissions. Every
+            // other attachment (invoices, bills, …) needs the section of the
+            // record it's attached to, or Documents (whose attachment index
+            // lists them all) — this route is ungated by section otherwise.
             if ($attachment->attachable_type === (new DocumentFolder)->getMorphClass()) {
                 $folder = DocumentFolder::find($attachment->attachable_id);
 
                 abort_unless($folder !== null && Gate::forUser($request->user())->allows('view', $folder), 403);
+            } else {
+                abort_unless(AttachmentAccess::viewerCanDownload($request->user(), $company, $attachment), 403);
             }
 
             // Open safe types (PDF, raster images) inline in a new tab when asked;
